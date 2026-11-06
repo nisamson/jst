@@ -4,8 +4,9 @@
 
 Most of this architecture describes planned features. The React and TypeScript
 Vite application now has a worker-based SQLite/OPFS storage foundation and
-capability/persistence reporting. Profile persistence and UI, claims, PWA
-support, export, and cloud synchronization are not yet implemented.
+capability/persistence reporting, plus an isolated local profile data layer.
+Profile UI, claims, PWA support, export, and cloud synchronization are not yet
+implemented.
 
 The app supports multiple local profiles per installation, each backed by a
 separate SQLite database. A profile has a user-chosen label independent of the
@@ -83,9 +84,29 @@ not display labels or `:memory:`.
 The worker serializes requests, verifies the OPFS VFS is available, and always
 opens databases with that VFS. There is no localStorage or in-memory fallback.
 Initialization alone creates no profile, application schema, or database.
-Versioned profile schemas and profile discovery belong to the next storage
-slice. Callers must close/dispose their sessions; worker failures and timeouts
-reject pending work rather than retrying potentially committed writes.
+Callers must close/dispose their sessions; worker failures and timeouts reject
+pending work rather than retrying potentially committed writes.
+
+### Local profile persistence
+
+`src/storage/profiles.ts` provides profile create, list, and open operations
+outside React components. Each profile gets a stable UUID and a separate
+`/profile-{uuid}.sqlite3` database; display labels are never used as
+filenames. Discovery scans the OPFS root for only that exact profile filename
+pattern, then reads and validates each candidate's metadata. A dedicated
+catalog database is not used. Listing returns valid profiles and explicit
+per-profile errors for matching files that cannot be read or have incomplete
+or unsupported metadata; those files are never presented as usable profiles.
+
+Each database stores one row in `profile_metadata` for its stable ID, required
+label, optional real name, and creation timestamp. `PRAGMA user_version`
+identifies schema version 1. New profile schema and metadata are initialized
+in a SQLite transaction. Existing non-empty databases and IDs are rejected,
+not reset or overwritten. A failed/incomplete database remains unlisted and
+is reported in the listing errors so callers can surface the problem; other
+valid profiles remain discoverable. No SSN field is stored. The profile open
+operation verifies the filename ID, schema version, and metadata before
+returning a profile-scoped SQLite session.
 
 This approach requires HTTPS (localhost is allowed), module workers,
 WebAssembly, SharedArrayBuffer/cross-origin isolation, and OPFS synchronous
