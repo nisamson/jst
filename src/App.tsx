@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StorageStatus from './components/StorageStatus'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
@@ -9,6 +10,8 @@ function App() {
 
   return (
     <>
+      <StorageStatus />
+      <a href="/diagnostics/storage">Storage diagnostics</a>
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />

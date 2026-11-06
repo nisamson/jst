@@ -1,0 +1,58 @@
+.storage-diagnostics {
+  display: grid;
+  gap: 20px;
+  padding: 32px 24px;
+  text-align: left;
+
+  h1 {
+    margin: 0;
+  }
+
+  a {
+    color: var(--accent);
+  }
+
+  .storage-status {
+    padding: 24px 0;
+    border-block: 1px solid var(--border);
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    display: inline;
+  }
+}
+
+.storage-probe {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+
+  .probe-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  dl {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+  }
+
+  dt {
+    font-weight: 600;
+    color: var(--text-h);
+  }
+
+  dd {
+    margin: 0 0 8px;
+    overflow-wrap: anywhere;
+  }
+}
