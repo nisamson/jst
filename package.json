@@ -8,19 +8,25 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "npm run lint -- --fix",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:browser": "npm run build && playwright test",
+    "test:browser:ui": "npm run test:browser -- --ui"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.90.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "~4.1.0"
   }
 }

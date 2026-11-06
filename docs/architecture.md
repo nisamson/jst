@@ -2,13 +2,16 @@
 
 ## Status and scope
 
-This is a proposed architecture, not a description of implemented features.
-The current project is a React and TypeScript Vite starter; it does not yet
-provide a PWA, SQLite storage, export, or cloud synchronization.
+Most of this architecture describes planned features. The React and TypeScript
+Vite application now has a worker-based SQLite/OPFS storage foundation and
+capability/persistence reporting. Profile persistence and UI, claims, PWA
+support, export, and cloud synchronization are not yet implemented.
 
-The app is intended for one job seeker and one profile per installation. A
-profile has a user-chosen label independent of the person's real name, and may
-contain multiple unemployment-insurance claims. It will digitize
+The app supports multiple local profiles per installation, each backed by a
+separate SQLite database. A profile has a user-chosen label independent of the
+person's optional real name, and may contain multiple unemployment-insurance
+claims. The real name is stored once per profile and applies across that
+profile's claims, not across unrelated profiles. The app will digitize
 Washington Employment Security Department (ESD) job-search log information
 and organize records for weekly filing. Users file their claims separately:
 the app will not integrate with ESD systems, determine eligibility, or assess
@@ -36,7 +39,7 @@ flowchart LR
             Sync["Sync coordination and status"]
             Adapters["Cloud-provider adapters and authorization"]
         end
-        DB[("SQLite database in OPFS")]
+        DB[("Separate profile SQLite databases in OPFS")]
         Shell["Cached application assets / offline shell"]
     end
 
@@ -63,7 +66,79 @@ offline shell caches application assets separately from the SQLite database;
 it is not a backup of user data. Cloud synchronization is optional and uses
 provider APIs directly from the browser, without an application backend.
 Provider adapters are an abstraction for supporting different services; at
-most one provider is connected at a time.
+most one provider is connected per profile at a time.
+
+### Implemented storage foundation
+
+The app uses the official
+[`@sqlite.org/sqlite-wasm`](https://github.com/sqlite/sqlite-wasm) package and
+its `opfs` VFS, running in a dedicated module worker. The UI never executes
+SQLite directly. `src/storage/local-storage.ts` provides initialization,
+open/create, parameter-bound SQL execution, close, and disposal. A session
+owns one database connection at a time; close it before opening another.
+Opening defaults to an existing file; creation must be requested explicitly.
+Filenames are root-relative SQLite filenames such as `/profile-id.sqlite3`,
+not display labels or `:memory:`.
+
+The worker serializes requests, verifies the OPFS VFS is available, and always
+opens databases with that VFS. There is no localStorage or in-memory fallback.
+Initialization alone creates no profile, application schema, or database.
+Versioned profile schemas and profile discovery belong to the next storage
+slice. Callers must close/dispose their sessions; worker failures and timeouts
+reject pending work rather than retrying potentially committed writes.
+
+This approach requires HTTPS (localhost is allowed), module workers,
+WebAssembly, SharedArrayBuffer/cross-origin isolation, and OPFS synchronous
+access handles in workers. Vite development and preview send:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Production hosting must send these headers too, serve emitted worker/proxy
+assets from the same origin, and serve `.wasm` as `application/wasm`. Deploy
+the whole `dist` directory. Missing capabilities or failed WASM/OPFS
+initialization block storage-dependent use with an explanation and retry;
+they never select a weaker backend.
+
+The upstream baseline for the required APIs is Chromium 108+, Firefox 111+,
+and Safari 17+ (the selected `opfs` VFS does not support earlier Safari).
+These are capability baselines, not a promise that every version works;
+private browsing, permissions, quotas, and host configuration can interfere.
+Automated browser tests verify Chromium and Firefox, including the production
+bundle. The test matrix additionally enables WebKit on Linux/macOS, which
+have not been verified on this Windows host. Windows WebKit launches but
+times out starting SQLite's nested OPFS proxy in both development and
+production; those projects are explicitly excluded on Windows.
+Actual Safari/iOS and physical mobile compatibility remain to be verified.
+See SQLite's [OPFS documentation](https://sqlite.org/wasm/doc/trunk/persistence.md)
+for locking and browser restrictions. Multiple tabs can contend for files;
+operations may fail and must not silently overwrite or reset storage.
+
+The readiness UI reuses or requests persistent-storage permission separately
+from database initialization. Pending permission (including a browser prompt)
+does not block reads/writes. Denied, missing, or failing permission APIs
+produce a warning, not a fake grant or a prohibition on otherwise supported
+local storage. Even a grant does not protect against explicit browser-data
+clearing or guarantee backup.
+
+### Interactive storage diagnostics
+
+`/diagnostics/storage` provides write/reopen, read, reload, and cleanup actions
+for one synthetic SQLite record. It uses the same worker/data boundary as
+future profile services. The reserved `/jst-storage-diagnostics.sqlite3`
+filename must never be allocated to a profile. No profile database is opened.
+Cleanup deletes only the synthetic row; it does not delete database files or
+clear origin-wide browser storage.
+
+The expected random token travels in the URL so a reload check compares
+persisted data against an independent marker, not a newly generated record.
+The marker is diagnostic data, not a credential. A changed/missing record
+is a failure, including when another diagnostics tab replaces it. The page
+also shows SQLite version and write time. It is intended for real-browser
+and device checks in addition to Playwright, not as a backup guarantee.
+Production hosts need an SPA fallback for the diagnostics URL.
 
 ## Core workflows
 
@@ -71,10 +146,12 @@ most one provider is connected at a time.
   details. Automatically group activities by their dates into weekly views;
   users can correct dates and details. The precise fields and validation
   behavior remain open.
-- **Onboarding:** Reuse existing storage or guide the user through local
-  storage initialization and optional cloud setup, then create or open a
-  claim. See the [onboarding user story](user-stories/onboarding.md) for the
-  proposed profile and claim flow.
+- **Onboarding:** List existing local profiles or guide the user through
+  creating a named profile with an optional real name and optional cloud
+  setup, then open its claims overview (which may be empty). Initial setup
+  uses a clearly labeled simulated cloud provider; real cloud connectivity
+  and claim creation are deferred. See the
+  [onboarding user story](user-stories/onboarding.md).
 - **Search:** Find locally stored activities. Search fields and filters remain
   open.
 - **Offline use:** After the app has been loaded at least once on a supported
@@ -119,8 +196,8 @@ most one provider is connected at a time.
 
 - Exact ESD log fields, activity types, week boundaries, validation, and
   whether incomplete records can be saved.
-- SQLite/WASM implementation, data-access design, PWA tooling, and supported
-  browser versions.
+- Profile schema/versioning and discovery, PWA tooling, and verified support
+  across additional browsers and mobile platforms.
 - Provider authorization and permissions, provider-specific file locations,
   and the cloud representation of data.
 - Sync triggers, scheduling, transfer strategy, multi-device guarantees,
