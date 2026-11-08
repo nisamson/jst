@@ -50,7 +50,8 @@ test('validates profile labels, creates a profile, and defers persistence reques
   await expect(page.getByRole('note')).toHaveCount(0)
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(0)
   await page.getByRole('button', { name: 'Example profile profile' }).click()
-  await expect(page.getByText('Example profile is selected and open.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Claims overview' })).toBeVisible()
+  await expect(page.getByText('Profile: Example profile')).toBeVisible()
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(0)
 })
 
