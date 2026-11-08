@@ -38,6 +38,16 @@ third-party assets and popup relationships; consider it when adding real
 cloud authorization. Unsupported or failed SQLite/OPFS setup blocks storage
 use rather than falling back to memory or localStorage.
 
+The production build is installable as a PWA and precaches the app shell,
+including SQLite's WebAssembly and worker assets. After the first online load,
+the app can reopen and navigate offline. New app versions are staged until the
+user chooses to reload. The service worker caches no profile databases:
+offline app assets do not provide persistence, sync, or backup, and browser
+storage may still be cleared. Production hosting must serve the complete
+`dist` directory over HTTPS (localhost is suitable for development) and keep
+the isolation headers above; verify these headers and `.wasm` content type on
+the deployed origin.
+
 The storage service in `src/storage/local-storage.ts` initializes a session
 without opening a database. `openDatabase('/id.sqlite3')` opens an existing
 file; `{ create: true }` explicitly allows creation. Use bound values with

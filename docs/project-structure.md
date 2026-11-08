@@ -19,6 +19,7 @@ navigation inside the `StorageStatus` capability boundary.
 | UI components | `src/components/` | Reusable form, simulated setup dialog, and storage UI; storage status provides the persistence-request boundary |
 | Storage and provider services | `src/storage/`, `src/sync/` | Profile persistence, profile-scoped simulated setup state, dummy-provider behavior, capability checks, and diagnostics data operations |
 | SQLite worker | `src/storage/sqlite.worker.ts`, `src/storage/protocol.ts` | Worker-side SQLite WASM/OPFS operations and typed request/response messages |
+| PWA shell | `vite.config.ts`, `pwa/service-worker.js`, `src/components/PwaStatus.tsx`, `public/pwa-*.svg` | Manifest, production service-worker precache, offline status, and staged update messaging |
 | Tests | `src/**/*.test.ts`, `src/**/*.test.tsx`, `tests/browser/` | Vitest service/component tests and Playwright real-browser tests |
 | Browser/build config | `vite.config.ts`, `playwright.config.ts`, `tsconfig*.json`, `.oxlintrc.json` | Vite workers/headers, browser projects, TypeScript, lint |
 | Public assets | `public/`, `src/assets/` | Root-served assets and Vite-imported assets respectively |

@@ -43,5 +43,10 @@ export default defineConfig({
       url: 'http://127.0.0.1:4177',
       reuseExistingServer: false,
     },
+    {
+      command: 'node tests/pwa-test-server.mjs',
+      url: 'http://127.0.0.1:4178/__test/health',
+      reuseExistingServer: false,
+    },
   ],
 })
