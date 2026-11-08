@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Alert, Button, Container, Paper, Stack, Text } from '@mantine/core'
 import { initializeStorage } from '../storage/local-storage'
 import type { StorageSession } from '../storage/local-storage'
 import type { Persistence } from '../storage/environment'
 import { requestPersistence } from '../storage/environment'
+import { StoragePersistenceContext } from './storage-persistence-context'
 
 type Status =
   | { state: 'checking' }
@@ -18,10 +19,12 @@ export default function StorageStatus({ children }: { children?: ReactNode }) {
 
 function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: ReactNode }) {
   const [status, setStatus] = useState<Status>({ state: 'checking' })
+  const mounted = useRef(false)
 
   useEffect(() => {
     let cancelled = false
     let session: StorageSession | undefined
+    mounted.current = true
     initializeStorage().then((result) => {
       if (cancelled) {
         void result.dispose().catch(() => {})
@@ -29,9 +32,6 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
       }
       session = result
       setStatus({ state: 'ready' })
-      void requestPersistence().then((persistence) => {
-        if (!cancelled) setStatus({ state: 'ready', persistence })
-      })
     }).catch((error: unknown) => {
       if (!cancelled) {
         setStatus({
@@ -42,8 +42,17 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
     })
     return () => {
       cancelled = true
+      mounted.current = false
       void session?.dispose().catch(() => {})
     }
+  }, [])
+
+  const requestPersistenceForProfileCreation = useCallback(async () => {
+    const persistence = await requestPersistence()
+    if (mounted.current) {
+      setStatus((current) => current.state === 'ready' ? { state: 'ready', persistence } : current)
+    }
+    return persistence
   }, [])
 
   return (
@@ -63,22 +72,22 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
           {status.state === 'ready' && (
             <>
               <Text component="output">Local SQLite storage is ready.</Text>
-              {status.persistence !== 'granted' && (
+              {status.persistence && status.persistence !== 'granted' && (
                 <Alert color="yellow" role="note" title="Persistent storage is not confirmed">
-                  {status.persistence === undefined
-                    ? 'Persistent storage permission is pending. You can continue while the browser waits for your choice.'
-                    : status.persistence === 'denied'
+                  {status.persistence === 'denied'
                     ? 'Persistent storage was not granted.'
                     : status.persistence === 'unavailable'
                       ? 'Persistent storage permission is not supported by this browser.'
-                      : 'Persistent storage permission could not be checked or requested.'}
-                  {' '}The browser may automatically clear local records.
+                      : 'Persistent storage permission could not be checked or requested.'}{' '}
+                  The browser may automatically clear local records. You can continue to use local storage.
                 </Alert>
               )}
               <Text c="dimmed" size="sm">
                 Local records can still be lost or cleared, even with persistent storage permission. This is not a backup.
               </Text>
-              {children}
+              <StoragePersistenceContext.Provider value={requestPersistenceForProfileCreation}>
+                {children}
+              </StoragePersistenceContext.Provider>
             </>
           )}
         </Stack>

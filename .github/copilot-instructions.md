@@ -17,17 +17,18 @@ Use npm and keep `package-lock.json` synchronized with `package.json`.
 ## Architecture
 
 - This is a client-rendered React application. `index.html` loads
-  `src\main.tsx`, which mounts `App` into `#root` inside `StrictMode`.
-  `src\App.tsx` owns the current page and its local state.
+  `src\main.tsx`, which mounts the app into `#root` inside `StrictMode` and
+  selects the main or storage-diagnostics page by pathname. `src\App.tsx`
+  wraps the profile landing page in the storage capability boundary.
 - `vite.config.ts` uses `@vitejs/plugin-react` for React transformation and Fast
   Refresh. React Compiler is not enabled.
 - The root TypeScript configuration references two no-emit projects:
   `tsconfig.app.json` covers browser code in `src`; `tsconfig.node.json` covers
   `vite.config.ts` with Node types. Keep browser and build-tool settings separate.
-- Global styles and light/dark theme tokens live in `src\index.css`;
-  `src\App.css` styles the page using those tokens. Both use native CSS nesting.
-  Assets imported from `src\assets` are processed by Vite; files in `public`
+- Global styles and theme-level CSS live in `src\index.css`; the UI primarily
+  uses Mantine components. Assets imported from `src\assets` are processed by Vite; files in `public`
   are referenced with root-relative URLs, including SVG symbol fragments.
+- See `docs\project-structure.md` for the current source, storage, and test map.
 
 ## Conventions
 

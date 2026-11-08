@@ -29,8 +29,10 @@ cloud connection. Claim creation is deferred.
    step or job-search activity entry is included in this milestone.
 
 The order and presentation of screens are not prescribed by this story. This
-journey describes intended behavior. Only the SQLite/OPFS foundation and
-storage capability/persistence reporting are currently implemented.
+journey describes intended behavior. The app currently implements SQLite/OPFS
+storage, multiple local profile persistence and discovery, and the landing-page
+profile create/open flow. Simulated cloud setup and the claims overview route
+are not yet implemented.
 
 ## Acceptance criteria
 

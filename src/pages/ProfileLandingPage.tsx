@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core'
+import CreateProfileForm from '../components/CreateProfileForm'
+import { useRequestStoragePersistence } from '../components/storage-persistence-context'
 import type { Profile, ProfileListing, ProfileSession } from '../storage/profiles'
-import { listProfiles, openProfile } from '../storage/profiles'
+import type { CreateProfileInput } from '../storage/profiles'
+import { createProfile, listProfiles, openProfile } from '../storage/profiles'
 
 type DiscoveryState =
   | { state: 'loading' }
@@ -16,10 +19,12 @@ export default function ProfileLandingPage() {
 function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
   const [discovery, setDiscovery] = useState<DiscoveryState>({ state: 'loading' })
   const [selectedProfile, setSelectedProfile] = useState<Profile>()
+  const [creatingProfile, setCreatingProfile] = useState(false)
   const [openingId, setOpeningId] = useState<string>()
   const [selectionError, setSelectionError] = useState<string>()
   const activeSession = useRef<ProfileSession | null>(null)
   const mounted = useRef(false)
+  const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
     mounted.current = true
@@ -75,6 +80,23 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
     }
   }
 
+  async function saveProfile(input: CreateProfileInput) {
+    await requestStoragePersistence()
+    const profile = await createProfile(input)
+    setDiscovery((current) => {
+      if (current.state !== 'loaded') return current
+      return {
+        state: 'loaded',
+        listing: {
+          ...current.listing,
+          profiles: [...current.listing.profiles, profile]
+            .toSorted((left, right) => left.label.localeCompare(right.label)),
+        },
+      }
+    })
+    setCreatingProfile(false)
+  }
+
   const listing = discovery.state === 'loaded' ? discovery.listing : undefined
   const hasDiscoveryErrors = Boolean(listing && listing.errors.length > 0)
 
@@ -97,7 +119,18 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
               <Title id="profile-list-heading" order={2}>Local profiles</Title>
               <Text c="dimmed" size="sm">Your profiles stay on this device and in this browser.</Text>
             </Stack>
-            <Button variant="light" onClick={onRetry}>Retry profile discovery</Button>
+            <Group gap="xs">
+              <Button variant="light" onClick={onRetry}>Retry profile discovery</Button>
+              <Button
+                variant="filled"
+                aria-expanded={creatingProfile}
+                aria-controls={creatingProfile ? 'create-profile-heading' : undefined}
+                disabled={!listing}
+                onClick={() => setCreatingProfile(true)}
+              >
+                Create profile
+              </Button>
+            </Group>
           </Group>
 
           {discovery.state === 'loading' && (
@@ -155,11 +188,18 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
               <Stack gap="xs">
                 <Title order={3}>No local profiles yet</Title>
                 <Text c="dimmed">
-                  Create a profile to keep your job-search records organized. Profile creation
-                  will be available here in the next setup step.
+                  Create a profile to keep your job-search records organized. You can optionally
+                  add your real name; no Social Security number is requested or stored.
                 </Text>
               </Stack>
             </Paper>
+          )}
+
+          {creatingProfile && (
+            <CreateProfileForm
+              onSubmit={saveProfile}
+              onCancel={() => setCreatingProfile(false)}
+            />
           )}
 
           {selectedProfile && (

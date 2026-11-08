@@ -3,10 +3,10 @@
 ## Status and scope
 
 Most of this architecture describes planned features. The React and TypeScript
-Vite application now has a worker-based SQLite/OPFS storage foundation and
-capability/persistence reporting, plus an isolated local profile data layer.
-Profile UI, claims, PWA support, export, and cloud synchronization are not yet
-implemented.
+Vite application has a worker-based SQLite/OPFS storage foundation and
+capability/persistence reporting, isolated local profile persistence and
+discovery, and a landing page for profile creation and selection. Claims,
+PWA support, export, and cloud synchronization are not yet implemented.
 
 The app supports multiple local profiles per installation, each backed by a
 separate SQLite database. A profile has a user-chosen label independent of the
