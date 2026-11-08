@@ -13,10 +13,6 @@ interface SimulatedSyncStateDependencies {
 
 const defaultDependencies: SimulatedSyncStateDependencies = { openProfile }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown storage error.'
-}
-
 export function createSimulatedSyncStateRepository(
   dependencies: SimulatedSyncStateDependencies = defaultDependencies,
 ) {
@@ -50,33 +46,8 @@ export function createSimulatedSyncStateRepository(
     }
 
     const profile = await dependencies.openProfile(profileId)
-    let transactionOpen = false
     try {
-      await profile.execute('BEGIN IMMEDIATE')
-      transactionOpen = true
-      await profile.execute(
-        `INSERT INTO simulated_sync_setup (id, provider_id, account_label, connected_at)
-         VALUES (1, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           provider_id = excluded.provider_id,
-           account_label = excluded.account_label,
-           connected_at = excluded.connected_at`,
-        [state.providerId, state.accountLabel, state.connectedAt],
-      )
-      await profile.execute('COMMIT')
-      transactionOpen = false
-    } catch (error) {
-      if (transactionOpen) {
-        try {
-          await profile.execute('ROLLBACK')
-        } catch (rollbackError) {
-          throw new Error(
-            `Saving simulated setup failed: ${getErrorMessage(error)} Rollback also failed: ${getErrorMessage(rollbackError)}`,
-            { cause: rollbackError },
-          )
-        }
-      }
-      throw error
+      await profile.saveSimulatedSyncState(state.accountLabel, state.connectedAt)
     } finally {
       await profile.dispose()
     }

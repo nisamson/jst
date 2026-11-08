@@ -1,4 +1,15 @@
-export type Persistence = 'granted' | 'denied' | 'unavailable' | 'error'
+export type Persistence = 'granted' | 'denied' | 'unavailable' | 'error' | 'unknown'
+
+export async function getPersistenceStatus(): Promise<Persistence> {
+  const storage = navigator.storage
+  if (typeof storage?.persisted !== 'function') return 'unavailable'
+  try {
+    const persisted = await storage.persisted()
+    return typeof persisted === 'boolean' ? persisted ? 'granted' : 'denied' : 'unknown'
+  } catch {
+    return 'error'
+  }
+}
 
 export function getStorageLimitation(): string | undefined {
   if (!globalThis.isSecureContext) {
@@ -18,9 +29,14 @@ export function getStorageLimitation(): string | undefined {
 export async function requestPersistence(): Promise<Persistence> {
   const storage = navigator.storage
   try {
-    if (await storage?.persisted?.()) return 'granted'
+    if (typeof storage?.persisted === 'function') {
+      const persisted = await storage.persisted()
+      if (persisted === true) return 'granted'
+      if (persisted !== false) return 'unknown'
+    }
     if (typeof storage?.persist !== 'function') return 'unavailable'
-    return await storage.persist() ? 'granted' : 'denied'
+    const granted = await storage.persist()
+    return typeof granted === 'boolean' ? granted ? 'granted' : 'denied' : 'unknown'
   } catch {
     return 'error'
   }

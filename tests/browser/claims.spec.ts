@@ -38,7 +38,7 @@ async function seedProfileClaims(page: Page, label: string) {
 
 test('opens an empty profile-scoped overview, survives reload, and switches profiles', async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
   })
   await page.goto('/')
@@ -67,7 +67,7 @@ test('opens an empty profile-scoped overview, survives reload, and switches prof
 test('upgrades an existing version-one profile without losing its metadata', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
   await page.addInitScript(() => {
-    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
   })
   await page.goto('/')
@@ -95,14 +95,14 @@ test('upgrades an existing version-one profile without losing its metadata', asy
   })
 
   expect(migration.profile.label).toBe('Legacy profile')
-  expect(migration.version).toBe(2)
+  expect(migration.version).toBe(3)
   expect(migration.claimsTableExists).toBe(true)
 })
 
 test('lists persistent claims, selects their metadata, and isolates them by profile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
   await page.addInitScript(() => {
-    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
   })
   await page.goto('/')
@@ -154,7 +154,7 @@ test('lists persistent claims, selects their metadata, and isolates them by prof
 test('recovers from a stale claim selection by selecting an available claim', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
   await page.addInitScript(() => {
-    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
   })
   await page.goto('/')
@@ -173,7 +173,7 @@ test('recovers from a stale claim selection by selecting an available claim', as
 test('reports claim read failures without showing a partial overview', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
   await page.addInitScript(() => {
-    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
   })
   await page.goto('/')

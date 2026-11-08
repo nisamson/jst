@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Anchor, Breadcrumbs, Button, Container, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core'
 import { openProfile } from '../storage/profiles'
 import type { Profile } from '../storage/profiles'
+import type { Persistence } from '../storage/environment'
 import { listClaims } from '../storage/claims'
 import type { Claim } from '../storage/claims'
 import ClaimOverview from '../components/ClaimOverview'
@@ -9,7 +10,12 @@ import ClaimSidebar from '../components/ClaimSidebar'
 
 type ProfileState =
   | { state: 'loading' }
-  | { state: 'loaded'; profile: Profile; claims: Claim[] }
+  | {
+    state: 'loaded'
+    profile: Profile
+    claims: Claim[]
+    access: { mode: 'read-write' | 'read-only'; persistence: Persistence; syncConnected: boolean }
+  }
   | { state: 'error'; title: string; message: string }
 
 export default function ClaimsPage({
@@ -93,7 +99,12 @@ function ClaimsOverview({
       }
 
       if (cancelled) return
-      setProfileState({ state: 'loaded', profile: session.profile, claims })
+      setProfileState({
+        state: 'loaded',
+        profile: session.profile,
+        claims,
+        access: session.access,
+      })
     }).catch((error: unknown) => {
       if (!cancelled) {
         setProfileState({
@@ -147,7 +158,7 @@ function ClaimsOverview({
         {profileState.state === 'loading' && (
           <Group>
             <Loader size="sm" />
-            <Text aria-live="polite">Opening local profile...</Text>
+            <Text aria-live="polite">Opening profile and checking access...</Text>
           </Group>
         )}
 
@@ -169,6 +180,19 @@ function ClaimsOverview({
             <Text component="output" aria-live="polite">
               Profile: <strong>{profileState.profile.label}</strong>
             </Text>
+            {profileState.access.mode === 'read-only' && (
+              <Alert color="yellow" role="note" title="Profile is read-only">
+                {profileState.access.persistence === 'denied'
+                  ? 'Persistent storage was not granted.'
+                  : profileState.access.persistence === 'unavailable'
+                    ? 'This browser cannot verify persistent storage.'
+                    : profileState.access.persistence === 'unknown'
+                      ? 'The persistent-storage status is unknown.'
+                      : 'Checking persistent storage failed.'}{' '}
+                Simulated sync is not connected. You can view this profile, but profile-content changes are blocked.
+                The local data is not protected or backed up.
+              </Alert>
+            )}
             {claimId && !selectedClaim && (
               <Alert color="yellow" title="The selected claim is unavailable">
                 Choose an available claim from this profile. No other profile's claims are shown.

@@ -27,6 +27,14 @@ function parseClaimRow(row: SqlRow): Claim {
 }
 
 export async function listClaims(execute: StorageSession['execute']): Promise<Claim[]> {
+  const [version] = await execute('PRAGMA user_version')
+  if (version?.user_version === 1) {
+    const [claimsTable] = await execute(
+      "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'claims'",
+    )
+    if (!claimsTable) return []
+  }
+
   const rows = await execute(
     'SELECT id, identifier, created_at, claim_start_date FROM claims ORDER BY created_at DESC, id',
   )

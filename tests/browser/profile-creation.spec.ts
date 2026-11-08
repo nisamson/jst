@@ -52,6 +52,9 @@ test('validates profile labels, creates a profile, and defers persistence reques
   await page.getByRole('button', { name: 'Example profile profile' }).click()
   await expect(page.getByRole('heading', { name: 'Claims overview' })).toBeVisible()
   await expect(page.getByText('Profile: Example profile')).toBeVisible()
+  const readOnlyNotice = page.getByRole('note').filter({ hasText: 'Profile is read-only' })
+  await expect(readOnlyNotice).toContainText('Persistent storage was not granted.')
+  await expect(readOnlyNotice).toContainText('profile-content changes are blocked.')
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(0)
 })
 

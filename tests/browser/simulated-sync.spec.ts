@@ -60,8 +60,42 @@ test('continuing locally cancels setup without saving connection state', async (
   await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toBeVisible()
 })
 
+test('simulated setup makes an unverified profile writable without granting persistence', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'This storage-access check uses Vite source modules.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => false })
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create profile', exact: true }).click()
+  const form = page.locator('form')
+  await form.getByRole('textbox', { name: 'Profile label' }).fill('Simulated access profile')
+  await form.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Set up simulated sync for Simulated access profile' }).click()
+  await page.getByRole('button', { name: 'Connect simulated provider' }).click()
+  await expect(page.getByRole('alert')).toContainText('Simulated setup complete')
+  await page.getByRole('button', { name: 'Continue locally' }).click()
+
+  const access = await page.evaluate(async () => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const profile = (await profiles.listProfiles()).profiles[0]
+    if (!profile) throw new Error('Test profile was not found.')
+    const session = await profiles.openProfile(profile.id)
+    try {
+      return session.access
+    } finally {
+      await session.dispose()
+    }
+  })
+  expect(access).toEqual({ mode: 'read-write', persistence: 'denied', syncConnected: true })
+})
+
 test('reports setup persistence failures and allows retry without changing the profile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('production'), 'This storage-failure setup uses Vite source modules.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+  })
   await page.goto('/')
   const profile = await page.evaluate(async () => {
     const modulePath = '/src/storage/profiles.ts'
