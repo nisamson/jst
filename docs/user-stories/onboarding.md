@@ -30,9 +30,9 @@ cloud connection. Claim creation is deferred.
 
 The order and presentation of screens are not prescribed by this story. This
 journey describes intended behavior. The app currently implements SQLite/OPFS
-storage, multiple local profile persistence and discovery, and the landing-page
-profile create/open flow. Simulated cloud setup and the claims overview route
-are not yet implemented.
+storage, multiple local profile persistence and discovery, profile creation,
+and a profile-scoped empty claims overview. Simulated cloud setup and claims
+listing are not yet implemented.
 
 ## Acceptance criteria
 

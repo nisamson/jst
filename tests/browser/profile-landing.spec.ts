@@ -6,7 +6,7 @@ declare global {
   }
 }
 
-test('lists and opens the selected profile, then switches without retaining the prior selection', async ({ page }) => {
+test('opens the selected profile claims overview and switches profiles', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
 
@@ -26,14 +26,16 @@ test('lists and opens the selected profile, then switches without retaining the 
   await expect(secondOption).toBeVisible()
   await secondOption.focus()
   await page.keyboard.press('Enter')
-  await expect(secondOption).toHaveAttribute('aria-pressed', 'true')
-  await expect(firstOption).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.getByText('Profile two is selected and open.')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profiles.second.id}`))
+  await expect(page.getByRole('heading', { name: 'Claims overview' })).toBeVisible()
+  await expect(page.getByText('Profile: Profile two')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
 
+  await page.getByRole('button', { name: 'Change profile' }).click()
   await firstOption.click()
-  await expect(firstOption).toHaveAttribute('aria-pressed', 'true')
-  await expect(secondOption).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.getByText('Profile one is selected and open.')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profiles.first.id}`))
+  await expect(page.getByText('Profile: Profile one')).toBeVisible()
+  await expect(page.getByText('Profile: Profile two')).toHaveCount(0)
   expect(profiles.first.id).not.toBe(profiles.second.id)
 })
 
@@ -86,6 +88,7 @@ test('reports corrupt profile files while keeping valid profiles available', asy
   await expect(page.getByRole('button', { name: 'Available profile profile' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText(corruptId)
   await page.getByRole('button', { name: 'Available profile profile' }).click()
-  await expect(page.getByText('Available profile is selected and open.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Claims overview' })).toBeVisible()
+  await expect(page.getByText('Profile: Available profile')).toBeVisible()
   expect(validProfile.id).not.toBe(corruptId)
 })

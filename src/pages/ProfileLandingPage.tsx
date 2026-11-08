@@ -1,33 +1,39 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core'
 import CreateProfileForm from '../components/CreateProfileForm'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
-import type { Profile, ProfileListing, ProfileSession } from '../storage/profiles'
+import type { ProfileListing } from '../storage/profiles'
 import type { CreateProfileInput } from '../storage/profiles'
-import { createProfile, listProfiles, openProfile } from '../storage/profiles'
+import { createProfile, listProfiles } from '../storage/profiles'
 
 type DiscoveryState =
   | { state: 'loading' }
   | { state: 'loaded'; listing: ProfileListing }
   | { state: 'error'; message: string }
 
-export default function ProfileLandingPage() {
+export default function ProfileLandingPage({ onOpenProfile }: { onOpenProfile: (id: string) => void }) {
   const [attempt, setAttempt] = useState(0)
-  return <ProfileDiscovery key={attempt} onRetry={() => setAttempt((value) => value + 1)} />
+  return (
+    <ProfileDiscovery
+      key={attempt}
+      onOpenProfile={onOpenProfile}
+      onRetry={() => setAttempt((value) => value + 1)}
+    />
+  )
 }
 
-function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
+function ProfileDiscovery({
+  onOpenProfile,
+  onRetry,
+}: {
+  onOpenProfile: (id: string) => void
+  onRetry: () => void
+}) {
   const [discovery, setDiscovery] = useState<DiscoveryState>({ state: 'loading' })
-  const [selectedProfile, setSelectedProfile] = useState<Profile>()
   const [creatingProfile, setCreatingProfile] = useState(false)
-  const [openingId, setOpeningId] = useState<string>()
-  const [selectionError, setSelectionError] = useState<string>()
-  const activeSession = useRef<ProfileSession | null>(null)
-  const mounted = useRef(false)
   const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
-    mounted.current = true
     let cancelled = false
     listProfiles().then((listing) => {
       if (!cancelled) setDiscovery({ state: 'loaded', listing })
@@ -41,44 +47,8 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
     })
     return () => {
       cancelled = true
-      mounted.current = false
-      const session = activeSession.current
-      activeSession.current = null
-      void session?.dispose().catch((error: unknown) => {
-        console.error('Could not close the active profile storage session.', error)
-      })
     }
   }, [])
-
-  async function selectProfile(profile: Profile) {
-    setOpeningId(profile.id)
-    setSelectionError(undefined)
-
-    try {
-      const previousSession = activeSession.current
-      if (previousSession) {
-        await previousSession.dispose()
-        if (activeSession.current === previousSession) activeSession.current = null
-        if (mounted.current) setSelectedProfile(undefined)
-      }
-
-      const nextSession = await openProfile(profile.id)
-      if (!mounted.current) {
-        await nextSession.dispose()
-        return
-      }
-      activeSession.current = nextSession
-      setSelectedProfile(nextSession.profile)
-    } catch (error) {
-      if (mounted.current) {
-        setSelectionError(error instanceof Error ? error.message : 'The selected profile could not be opened.')
-      } else {
-        console.error('Could not finish opening or close the selected profile.', error)
-      }
-    } finally {
-      if (mounted.current) setOpeningId(undefined)
-    }
-  }
 
   async function saveProfile(input: CreateProfileInput) {
     await requestStoragePersistence()
@@ -168,14 +138,11 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
                       {profile.realName && <Text c="dimmed" size="sm">{profile.realName}</Text>}
                     </Stack>
                     <Button
-                      variant={selectedProfile?.id === profile.id ? 'filled' : 'light'}
-                      aria-pressed={selectedProfile?.id === profile.id}
+                      variant="light"
                       aria-label={`${profile.label} profile`}
-                      disabled={Boolean(openingId)}
-                      loading={openingId === profile.id}
-                      onClick={() => void selectProfile(profile)}
+                      onClick={() => onOpenProfile(profile.id)}
                     >
-                      {selectedProfile?.id === profile.id ? 'Selected' : 'Open profile'}
+                      Open profile
                     </Button>
                   </Group>
                 </Paper>
@@ -202,27 +169,6 @@ function ProfileDiscovery({ onRetry }: { onRetry: () => void }) {
             />
           )}
 
-          {selectedProfile && (
-            <Paper withBorder p="md" radius="md">
-              <Stack gap="xs">
-                <Text component="output" fw={600} aria-live="polite">
-                  {selectedProfile.label} is selected and open.
-                </Text>
-                <Text c="dimmed">The claims overview will be available in a later step.</Text>
-              </Stack>
-            </Paper>
-          )}
-          {openingId && (
-            <Text aria-live="polite">
-              Opening {listing?.profiles.find((profile) => profile.id === openingId)?.label ?? 'profile'}...
-            </Text>
-          )}
-          {selectionError && (
-            <Alert color="red" title="The selected profile could not be opened">
-              <Text>{selectionError}</Text>
-              <Text mt="xs">Retry by selecting the profile again. No profile data was changed.</Text>
-            </Alert>
-          )}
         </Stack>
 
         <Group justify="space-between" align="center" pt="md" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>

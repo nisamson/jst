@@ -9,13 +9,13 @@ architecture specification; see [architecture](architecture.md) and the
 
 `index.html` loads `src/main.tsx`. The entry point mounts React in `StrictMode`,
 configures Mantine, and selects `/diagnostics/storage` by pathname; other paths
-render `src/App.tsx`. `App` wraps the profile landing page in the `StorageStatus`
-capability boundary.
+render `src/App.tsx`. `App` handles profile selection and `/claims?profile=<id>`
+navigation inside the `StorageStatus` capability boundary.
 
 | Area | Location | Responsibility |
 | --- | --- | --- |
-| App shell | `src/App.tsx`, `src/main.tsx` | Root component, Mantine setup, page selection |
-| Pages | `src/pages/` | `ProfileLandingPage` discovers, creates, and opens local profiles; `StorageDiagnosticsPage` hosts storage diagnostics |
+| App shell | `src/App.tsx`, `src/main.tsx` | Root component, Mantine setup, page selection and lightweight history navigation |
+| Pages | `src/pages/` | `ProfileLandingPage` discovers and creates profiles; `ClaimsPage` opens a selected profile and shows its claims overview; `StorageDiagnosticsPage` hosts storage diagnostics |
 | UI components | `src/components/` | Reusable form and storage UI; storage status provides the persistence-request boundary |
 | Storage services | `src/storage/` | Capability checks, SQLite worker client, profile persistence, and diagnostics data operations |
 | SQLite worker | `src/storage/sqlite.worker.ts`, `src/storage/protocol.ts` | Worker-side SQLite WASM/OPFS operations and typed request/response messages |
@@ -36,8 +36,8 @@ capability boundary.
   initiates profile creation. Read-only capability checks and profile
   discovery do not prompt. A denied or unavailable persistence request warns
   without blocking local use.
-- The app currently chooses between the main profile page and the storage
-  diagnostics page in `src/main.tsx`; it does not use a routing library.
+- `src/main.tsx` selects the storage diagnostics page; `src/App.tsx` handles
+  the landing page and profile-scoped claims route without a routing library.
 - Global styles and theme-level CSS are in `src/index.css`; UI controls and
   layout primarily use Mantine. `public/icons.svg` is referenced by root URL.
 
