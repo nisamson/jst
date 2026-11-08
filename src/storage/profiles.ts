@@ -1,7 +1,7 @@
 import { initializeStorage } from './local-storage'
 import type { StorageSession } from './local-storage'
 
-const PROFILE_DATABASE_VERSION = 2
+const PROFILE_DATABASE_VERSION = 3
 const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
 const CREATE_CLAIMS_TABLE = `
@@ -10,6 +10,14 @@ const CREATE_CLAIMS_TABLE = `
     identifier TEXT NOT NULL,
     created_at TEXT NOT NULL,
     claim_start_date TEXT
+  )
+`
+const CREATE_SIMULATED_SYNC_TABLE = `
+  CREATE TABLE simulated_sync_setup (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+    account_label TEXT NOT NULL,
+    connected_at TEXT NOT NULL
   )
 `
 
@@ -114,7 +122,7 @@ async function readProfile(storage: StorageSession, id: string): Promise<Profile
 async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   const [versionRow] = await storage.execute('PRAGMA user_version')
   if (versionRow?.user_version === PROFILE_DATABASE_VERSION) return
-  if (versionRow?.user_version !== 1) {
+  if (versionRow?.user_version !== 1 && versionRow?.user_version !== 2) {
     throw new Error('The local profile database cannot be migrated from its current version.')
   }
 
@@ -122,11 +130,20 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   let transactionOpen = true
   try {
     const [currentVersionRow] = await storage.execute('PRAGMA user_version')
-    if (currentVersionRow?.user_version === 1) {
-      await storage.execute(CREATE_CLAIMS_TABLE)
-      await storage.execute(`PRAGMA user_version = ${PROFILE_DATABASE_VERSION}`)
-    } else if (currentVersionRow?.user_version !== PROFILE_DATABASE_VERSION) {
+    let currentVersion = currentVersionRow?.user_version
+    if (typeof currentVersion !== 'number' || currentVersion < 1 || currentVersion > PROFILE_DATABASE_VERSION) {
       throw new Error('The local profile database changed while it was being migrated.')
+    }
+    while (currentVersion < PROFILE_DATABASE_VERSION) {
+      if (currentVersion === 1) {
+        await storage.execute(CREATE_CLAIMS_TABLE)
+      } else if (currentVersion === 2) {
+        await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
+      } else {
+        throw new Error('The local profile database cannot be migrated from its current version.')
+      }
+      currentVersion += 1
+      await storage.execute(`PRAGMA user_version = ${currentVersion}`)
     }
 
     await storage.execute('COMMIT')
@@ -192,6 +209,7 @@ export function createProfileRepository(
           )
         `)
         await storage.execute(CREATE_CLAIMS_TABLE)
+        await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
         await storage.execute(
           'INSERT INTO profile_metadata (id, profile_id, label, real_name, created_at) VALUES (1, ?, ?, ?, ?)',
           [id, normalized.label, normalized.realName ?? null, createdAt],

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import CreateProfileForm from '../components/CreateProfileForm'
+import SimulatedSyncDialog from '../components/SimulatedSyncDialog'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
-import type { ProfileListing } from '../storage/profiles'
+import type { Profile, ProfileListing } from '../storage/profiles'
 import type { CreateProfileInput } from '../storage/profiles'
 import { createProfile, listProfiles } from '../storage/profiles'
 
@@ -31,6 +32,7 @@ function ProfileDiscovery({
 }) {
   const [discovery, setDiscovery] = useState<DiscoveryState>({ state: 'loading' })
   const [creatingProfile, setCreatingProfile] = useState(false)
+  const [setupProfile, setSetupProfile] = useState<Profile>()
   const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
@@ -137,13 +139,22 @@ function ProfileDiscovery({
                       <Text fw={600}>{profile.label}</Text>
                       {profile.realName && <Text c="dimmed" size="sm">{profile.realName}</Text>}
                     </Stack>
-                    <Button
-                      variant="light"
-                      aria-label={`${profile.label} profile`}
-                      onClick={() => onOpenProfile(profile.id)}
-                    >
-                      Open profile
-                    </Button>
+                    <Group gap="xs">
+                      <Button
+                        variant="light"
+                        aria-label={`${profile.label} profile`}
+                        onClick={() => onOpenProfile(profile.id)}
+                      >
+                        Open profile
+                      </Button>
+                      <Button
+                        variant="default"
+                        aria-label={`Set up simulated sync for ${profile.label}`}
+                        onClick={() => setSetupProfile(profile)}
+                      >
+                        Simulated sync
+                      </Button>
+                    </Group>
                   </Group>
                 </Paper>
               ))}
@@ -179,6 +190,14 @@ function ProfileDiscovery({
           </Group>
         </Group>
       </Stack>
+      {setupProfile && (
+        <SimulatedSyncDialog
+          key={setupProfile.id}
+          profileId={setupProfile.id}
+          profileLabel={setupProfile.label}
+          onClose={() => setSetupProfile(undefined)}
+        />
+      )}
     </Container>
   )
 }

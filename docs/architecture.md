@@ -6,9 +6,9 @@ Most of this architecture describes planned features. The React and TypeScript
 Vite application has a worker-based SQLite/OPFS storage foundation and
 capability/persistence reporting, isolated local profile persistence and
 discovery, a landing page for profile creation and selection, and a
-profile-scoped claims overview with a sidebar and selected-claim metadata.
-Claim creation, PWA support, export, and cloud synchronization are not yet
-implemented.
+profile-scoped claims overview with a sidebar and selected-claim metadata, and
+an optional simulated sync-setup dialog. Claim creation, PWA support, export,
+and real cloud synchronization are not yet implemented.
 
 The app supports multiple local profiles per installation, each backed by a
 separate SQLite database. A profile has a user-chosen label independent of the
@@ -102,15 +102,26 @@ or unsupported metadata; those files are never presented as usable profiles.
 
 Each database stores one row in `profile_metadata` for its stable ID, required
 label, optional real name, and creation timestamp. `PRAGMA user_version`
-identifies schema version 2. New profile schema and metadata are initialized
+identifies schema version 3. New profile schema and metadata are initialized
 in a SQLite transaction. Existing non-empty databases and IDs are rejected,
 not reset or overwritten. Opening a version 1 profile migrates it in a
-transaction by adding the claims table; discovery can still list it before it
-is opened. A failed/incomplete database remains unlisted and is reported in
+transaction by adding the claims table; opening a version 2 profile adds the
+simulated setup-state table. Discovery can still list older profiles before
+they are opened. A failed/incomplete database remains unlisted and is reported in
 the listing errors so callers can surface the problem; other valid profiles
 remain discoverable. No SSN field is stored. The profile open operation
 verifies the filename ID, schema version, and metadata before returning a
 profile-scoped SQLite session.
+
+### Simulated sync setup
+
+`src/sync/simulated-provider.ts` supplies display-only simulated cloud profiles
+and a deterministic simulated connection result. The reusable setup dialog
+does not authorize a real account or transfer, import, restore, merge, or
+overwrite data. A successful setup is recorded in the selected profile's
+`simulated_sync_setup` table, so state survives reloads without crossing
+profiles. A simulated connected state is not evidence of synchronization or
+backup.
 
 The version 2 claims table is scoped to its profile database and stores a
 stable claim ID, display identifier, app record creation timestamp, and
