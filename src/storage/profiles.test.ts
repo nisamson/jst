@@ -9,6 +9,8 @@ interface FakeDatabase {
   hasTable: boolean
   hasClaimsTable: boolean
   hasSimulatedSyncTable: boolean
+  queryOnly: boolean
+  syncState?: { provider_id: string; account_label: string; connected_at: string }
   profile?: {
     profile_id: string
     label: string
@@ -31,7 +33,7 @@ function row(values: Record<string, SqlValue>): SqlRow {
   return values
 }
 
-function createHarness(ids = profileIds) {
+function createHarness(ids = profileIds, persistence: 'granted' | 'denied' | 'unavailable' | 'error' | 'unknown' = 'granted') {
   const initializeStorage = vi.fn(async () => storage)
   const getDirectory = vi.fn(async () => ({
     async *entries(): AsyncGenerator<[string, { kind: string }]> {
@@ -47,6 +49,7 @@ function createHarness(ids = profileIds) {
     initializeStorage,
     getDirectory,
     createId: () => ids[nextId++],
+    getPersistenceStatus: async () => persistence,
   })
   return { repository, initializeStorage, getDirectory }
 }
@@ -59,7 +62,13 @@ beforeEach(() => {
     async openDatabase(filename, options) {
       let database = databases.get(filename)
       if (!database && options?.create) {
-        database = { version: 0, hasTable: false, hasClaimsTable: false, hasSimulatedSyncTable: false }
+        database = {
+          version: 0,
+          hasTable: false,
+          hasClaimsTable: false,
+          hasSimulatedSyncTable: false,
+          queryOnly: false,
+        }
         databases.set(filename, database)
       }
       if (!database) throw new Error('Database does not exist.')
@@ -69,6 +78,17 @@ beforeEach(() => {
     async execute(sql, bind): Promise<SqlRow[]> {
       if (!activeDatabase) throw new Error('No database is open.')
       const statement = sql.replaceAll(/\s+/g, ' ').trim()
+      if (statement === 'PRAGMA query_only = ON') {
+        activeDatabase.queryOnly = true
+        return []
+      }
+      if (statement === 'PRAGMA query_only = OFF') {
+        activeDatabase.queryOnly = false
+        return []
+      }
+      if (activeDatabase.queryOnly && /^(BEGIN|COMMIT|ROLLBACK|CREATE|DROP|ALTER|INSERT|UPDATE|DELETE|PRAGMA user_version =)/i.test(statement)) {
+        throw new Error('attempt to write a readonly database')
+      }
       if (statement === 'BEGIN IMMEDIATE' || statement === 'COMMIT' || statement === 'ROLLBACK') return []
       if (statement === 'PRAGMA user_version') return [row({ user_version: activeDatabase.version })]
       if (statement === 'PRAGMA user_version = 2') {
@@ -83,6 +103,19 @@ beforeEach(() => {
         activeDatabase.version = 1
         return []
       }
+      if (statement.startsWith('SELECT provider_id, account_label, connected_at FROM simulated_sync_setup')) {
+        return activeDatabase.syncState ? [row(activeDatabase.syncState)] : []
+      }
+      if (statement.startsWith('INSERT INTO simulated_sync_setup')) {
+        const [accountLabel, connectedAt] = Array.isArray(bind) ? bind : []
+        activeDatabase.syncState = {
+          provider_id: 'dummy',
+          account_label: String(accountLabel),
+          connected_at: String(connectedAt),
+        }
+        return []
+      }
+      if (statement.startsWith('INSERT INTO claims')) return []
       if (statement.startsWith('SELECT name FROM sqlite_schema')) {
         return activeDatabase.hasTable ? [row({ name: 'profile_metadata' })] : []
       }
@@ -90,11 +123,11 @@ beforeEach(() => {
         activeDatabase.hasTable = true
         return []
       }
-      if (statement.startsWith('CREATE TABLE claims')) {
+      if (statement.startsWith('CREATE TABLE IF NOT EXISTS claims')) {
         activeDatabase.hasClaimsTable = true
         return []
       }
-      if (statement.startsWith('CREATE TABLE simulated_sync_setup')) {
+      if (statement.startsWith('CREATE TABLE IF NOT EXISTS simulated_sync_setup')) {
         activeDatabase.hasSimulatedSyncTable = true
         return []
       }
@@ -111,6 +144,9 @@ beforeEach(() => {
       }
       if (statement.startsWith('SELECT profile_id, label, real_name, created_at')) {
         return activeDatabase.profile ? [row(activeDatabase.profile)] : []
+      }
+      if (statement === 'SELECT profile_id FROM profile_metadata') {
+        return activeDatabase.profile ? [row({ profile_id: activeDatabase.profile.profile_id })] : []
       }
       throw new Error(`Unexpected SQL in test: ${statement}`)
     },
@@ -184,6 +220,7 @@ it('surfaces missing and unsupported profiles instead of creating or resetting t
     hasTable: true,
     hasClaimsTable: false,
     hasSimulatedSyncTable: false,
+    queryOnly: false,
     profile: {
       profile_id: profileIds[0],
       label: 'Preserve this profile',
@@ -207,6 +244,7 @@ it('migrates a version-one profile without changing its metadata', async () => {
     hasTable: true,
     hasClaimsTable: false,
     hasSimulatedSyncTable: false,
+    queryOnly: false,
     profile: {
       profile_id: profileIds[0],
       label: 'Existing profile',
@@ -237,6 +275,7 @@ it('migrates a version-two profile by adding simulated setup state', async () =>
     hasTable: true,
     hasClaimsTable: true,
     hasSimulatedSyncTable: false,
+    queryOnly: false,
     profile: {
       profile_id: profileIds[0],
       label: 'Existing profile',
@@ -251,5 +290,81 @@ it('migrates a version-two profile by adding simulated setup state', async () =>
   expect(opened.profile.label).toBe('Existing profile')
   expect(existing.version).toBe(3)
   expect(existing.hasSimulatedSyncTable).toBe(true)
+  await opened.dispose()
+})
+
+it('keeps unverified profiles readable while blocking database writes', async () => {
+  const { repository } = createHarness(profileIds, 'denied')
+  const profile = await repository.createProfile({ label: 'Read-only profile' })
+
+  const opened = await repository.openProfile(profile.id)
+  expect(opened.access).toEqual({
+    mode: 'read-only',
+    persistence: 'denied',
+    syncConnected: false,
+  })
+  expect(await opened.execute('SELECT profile_id FROM profile_metadata')).toEqual([
+    row({ profile_id: profile.id }),
+  ])
+  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/readonly/i)
+  await expect(opened.execute('PRAGMA user_version = 1')).rejects.toThrow(/readonly/i)
+  await opened.dispose()
+})
+
+it('allows writes when a simulated connection is saved for the profile', async () => {
+  const { repository } = createHarness(profileIds, 'denied')
+  const profile = await repository.createProfile({ label: 'Connected profile' })
+  const database = databases.get(`/profile-${profile.id}.sqlite3`)
+  if (!database) throw new Error('Test profile database was not created.')
+  database.syncState = {
+    provider_id: 'dummy',
+    account_label: 'Simulated account',
+    connected_at: '2026-01-01T00:00:00.000Z',
+  }
+
+  const opened = await repository.openProfile(profile.id)
+  expect(opened.access).toEqual({
+    mode: 'read-write',
+    persistence: 'denied',
+    syncConnected: true,
+  })
+  await opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')
+  await opened.dispose()
+})
+
+it('blocks profile operations while read-only setup temporarily enables its metadata write', async () => {
+  const { repository } = createHarness(profileIds, 'denied')
+  const profile = await repository.createProfile({ label: 'Setup profile' })
+  const opened = await repository.openProfile(profile.id)
+
+  const update = opened.saveSimulatedSyncState('Simulated account', '2026-01-01T00:00:00.000Z')
+  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/simulated setup is being saved/i)
+  await update
+  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/readonly/i)
+  await opened.dispose()
+})
+
+it('does not migrate a profile when neither access safeguard is verified', async () => {
+  const { repository } = createHarness(profileIds, 'unavailable')
+  const legacy: FakeDatabase = {
+    version: 2,
+    hasTable: true,
+    hasClaimsTable: true,
+    hasSimulatedSyncTable: false,
+    queryOnly: false,
+    profile: {
+      profile_id: profileIds[0],
+      label: 'Legacy profile',
+      real_name: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+    },
+  }
+  databases.set(`/profile-${profileIds[0]}.sqlite3`, legacy)
+
+  const opened = await repository.openProfile(profileIds[0])
+
+  expect(opened.access.mode).toBe('read-only')
+  expect(legacy.version).toBe(2)
+  expect(legacy.hasSimulatedSyncTable).toBe(false)
   await opened.dispose()
 })

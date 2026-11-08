@@ -55,3 +55,16 @@ it('rejects claim rows with invalid metadata', async () => {
 
   await expect(listClaims(execute)).rejects.toThrow(/invalid metadata/)
 })
+
+it('treats a version-one profile without a claims table as an empty overview', async () => {
+  const execute: StorageSession['execute'] = vi.fn(async (sql) => {
+    if (sql === 'PRAGMA user_version') return [row({ user_version: 1 })]
+    if (sql.startsWith('SELECT name FROM sqlite_schema')) return []
+    throw new Error(`Unexpected SQL: ${sql}`)
+  })
+
+  await expect(listClaims(execute)).resolves.toEqual([])
+  expect(execute).not.toHaveBeenCalledWith(
+    'SELECT id, identifier, created_at, claim_start_date FROM claims ORDER BY created_at DESC, id',
+  )
+})

@@ -1,11 +1,13 @@
 import { initializeStorage } from './local-storage'
 import type { StorageSession } from './local-storage'
+import { getPersistenceStatus } from './environment'
+import type { Persistence } from './environment'
 
 const PROFILE_DATABASE_VERSION = 3
 const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
 const CREATE_CLAIMS_TABLE = `
-  CREATE TABLE claims (
+  CREATE TABLE IF NOT EXISTS claims (
     id TEXT PRIMARY KEY NOT NULL,
     identifier TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -13,7 +15,7 @@ const CREATE_CLAIMS_TABLE = `
   )
 `
 const CREATE_SIMULATED_SYNC_TABLE = `
-  CREATE TABLE simulated_sync_setup (
+  CREATE TABLE IF NOT EXISTS simulated_sync_setup (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
     account_label TEXT NOT NULL,
@@ -35,7 +37,13 @@ export interface CreateProfileInput {
 
 export interface ProfileSession {
   profile: Profile
+  access: {
+    mode: 'read-write' | 'read-only'
+    persistence: Persistence
+    syncConnected: boolean
+  }
   execute: StorageSession['execute']
+  saveSimulatedSyncState: (accountLabel: string, connectedAt: string) => Promise<void>
   dispose: StorageSession['dispose']
 }
 
@@ -61,12 +69,14 @@ interface ProfileRepositoryDependencies {
   initializeStorage: () => Promise<StorageSession>
   getDirectory: () => Promise<ProfileDirectory>
   createId: () => string
+  getPersistenceStatus: () => Promise<Persistence>
 }
 
 const defaultDependencies: ProfileRepositoryDependencies = {
   initializeStorage,
   getDirectory: () => navigator.storage.getDirectory(),
   createId: () => crypto.randomUUID(),
+  getPersistenceStatus,
 }
 
 function errorMessage(error: unknown): string {
@@ -161,6 +171,77 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
     }
     throw error
   }
+}
+
+async function hasSimulatedSyncAccess(storage: StorageSession): Promise<boolean> {
+  const [row] = await storage.execute(
+    'SELECT provider_id, account_label, connected_at FROM simulated_sync_setup WHERE id = 1',
+  )
+  if (!row) return false
+  if (
+    row.provider_id !== 'dummy'
+    || typeof row.account_label !== 'string'
+    || typeof row.connected_at !== 'string'
+  ) {
+    throw new Error('The saved simulated setup state is invalid.')
+  }
+  return true
+}
+
+async function saveSimulatedSyncState(
+  storage: StorageSession,
+  readOnly: boolean,
+  accountLabel: string,
+  connectedAt: string,
+): Promise<void> {
+  if (!accountLabel.trim() || !connectedAt.trim()) {
+    throw new Error('The simulated setup state is invalid.')
+  }
+  if (readOnly) await storage.execute('PRAGMA query_only = OFF')
+
+  let transactionOpen = false
+  let failure: unknown
+  try {
+    await storage.execute('BEGIN IMMEDIATE')
+    transactionOpen = true
+    await storage.execute(
+      `INSERT INTO simulated_sync_setup (id, provider_id, account_label, connected_at)
+       VALUES (1, 'dummy', ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         provider_id = excluded.provider_id,
+         account_label = excluded.account_label,
+         connected_at = excluded.connected_at`,
+      [accountLabel.trim(), connectedAt],
+    )
+    await storage.execute('COMMIT')
+    transactionOpen = false
+  } catch (error) {
+    failure = error
+    if (transactionOpen) {
+      try {
+        await storage.execute('ROLLBACK')
+      } catch (rollbackError) {
+        failure = new Error(
+          `Saving simulated setup failed: ${errorMessage(error)} Rollback also failed: ${errorMessage(rollbackError)}`,
+          { cause: rollbackError },
+        )
+      }
+    }
+  }
+
+  if (readOnly) {
+    try {
+      await storage.execute('PRAGMA query_only = ON')
+    } catch (restoreError) {
+      failure = failure
+        ? new Error(
+          `Saving simulated setup failed: ${errorMessage(failure)} Read-only protection could not be restored: ${errorMessage(restoreError)}`,
+          { cause: restoreError },
+        )
+        : restoreError
+    }
+  }
+  if (failure) throw failure
 }
 
 async function containsFilename(directory: ProfileDirectory, filename: string): Promise<boolean> {
@@ -277,8 +358,55 @@ export function createProfileRepository(
     try {
       await storage.openDatabase(filename)
       const profile = await readProfile(storage, id)
-      await migrateProfileDatabase(storage)
-      return { profile, execute: storage.execute, dispose: storage.dispose }
+      const [versionRow] = await storage.execute('PRAGMA user_version')
+      const syncConnected = versionRow?.user_version === PROFILE_DATABASE_VERSION
+        ? await hasSimulatedSyncAccess(storage)
+        : false
+      const persistence = await dependencies.getPersistenceStatus()
+      const readOnly = persistence !== 'granted' && !syncConnected
+
+      if (!readOnly) await migrateProfileDatabase(storage)
+      else await storage.execute('PRAGMA query_only = ON')
+
+      let simulatedSyncWriteInProgress = false
+      let sessionUnavailable = false
+      const execute: StorageSession['execute'] = (sql, bind) => {
+        if (sessionUnavailable) {
+          return Promise.reject(new Error('The profile storage session is unavailable. Reopen the profile and retry.'))
+        }
+        if (simulatedSyncWriteInProgress) {
+          return Promise.reject(new Error('Simulated setup is being saved. Retry the profile operation shortly.'))
+        }
+        return storage.execute(sql, bind)
+      }
+
+      return {
+        profile,
+        access: {
+          mode: readOnly ? 'read-only' : 'read-write',
+          persistence,
+          syncConnected,
+        },
+        execute,
+        async saveSimulatedSyncState(accountLabel, connectedAt) {
+          if (sessionUnavailable) {
+            throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
+          }
+          if (simulatedSyncWriteInProgress) {
+            throw new Error('Simulated setup is already being saved. Retry the operation shortly.')
+          }
+          simulatedSyncWriteInProgress = true
+          try {
+            await saveSimulatedSyncState(storage, readOnly, accountLabel, connectedAt)
+          } catch (error) {
+            sessionUnavailable = true
+            throw error
+          } finally {
+            simulatedSyncWriteInProgress = false
+          }
+        },
+        dispose: storage.dispose,
+      }
     } catch (error) {
       await storage.dispose()
       throw error

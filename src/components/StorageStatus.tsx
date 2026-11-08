@@ -68,8 +68,11 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
                     ? 'Persistent storage was not granted.'
                     : status.persistence === 'unavailable'
                       ? 'Persistent storage permission is not supported by this browser.'
-                      : 'Persistent storage permission could not be checked or requested.'}{' '}
-                  The browser may automatically clear local records. You can continue to use local storage.
+                      : status.persistence === 'unknown'
+                        ? 'Persistent storage status could not be determined.'
+                        : 'Persistent storage permission could not be checked or requested.'}{' '}
+                  You can still create and read profiles. Profiles without verified persistence or simulated
+                  sync are read-only, and the browser may automatically clear local records.
                 </Alert>
               )}
               <Text c="dimmed" size="sm">

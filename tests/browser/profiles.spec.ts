@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 
 test('separate local profiles are discoverable and isolated after reload', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+  })
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
 
@@ -59,6 +62,43 @@ test('separate local profiles are discoverable and isolated after reload', async
     [{ value: 'first profile data' }],
     [{ value: 'second profile data' }],
   ])
+})
+
+test('unverified profile sessions allow reads but reject writes', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => false })
+  })
+  await page.goto('/')
+
+  const result = await page.evaluate(async () => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const profile = await profiles.createProfile({ label: 'Read-only profile' })
+    const session = await profiles.openProfile(profile.id)
+    try {
+      let writeError = ''
+      try {
+        await session.execute(
+          'INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES (?, ?, ?, ?)',
+          ['blocked-claim', 'Blocked claim', '2026-01-01T00:00:00.000Z', null],
+        )
+      } catch (error) {
+        writeError = error instanceof Error ? error.message : String(error)
+      }
+      const [count] = await session.execute('SELECT COUNT(*) AS count FROM claims')
+      return { mode: session.access.mode, persistence: session.access.persistence, writeError, count: count?.count }
+    } finally {
+      await session.dispose()
+    }
+  })
+
+  expect(result).toEqual({
+    mode: 'read-only',
+    persistence: 'denied',
+    writeError: expect.stringMatching(/readonly/i),
+    count: 0,
+  })
 })
 
 test('profile creation failure is reported and can be retried without a false profile', async ({ page }) => {
