@@ -1,8 +1,17 @@
 import { initializeStorage } from './local-storage'
 import type { StorageSession } from './local-storage'
 
-const PROFILE_DATABASE_VERSION = 1
+const PROFILE_DATABASE_VERSION = 2
+const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
+const CREATE_CLAIMS_TABLE = `
+  CREATE TABLE claims (
+    id TEXT PRIMARY KEY NOT NULL,
+    identifier TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    claim_start_date TEXT
+  )
+`
 
 export interface Profile {
   id: string
@@ -72,7 +81,11 @@ function normalizeProfile(input: CreateProfileInput): Omit<Profile, 'id' | 'crea
 
 async function readProfile(storage: StorageSession, id: string): Promise<Profile> {
   const [versionRow] = await storage.execute('PRAGMA user_version')
-  if (versionRow?.user_version !== PROFILE_DATABASE_VERSION) {
+  if (
+    typeof versionRow?.user_version !== 'number'
+    || versionRow.user_version < MINIMUM_PROFILE_DATABASE_VERSION
+    || versionRow.user_version > PROFILE_DATABASE_VERSION
+  ) {
     throw new Error(`Unsupported or incomplete profile database version for profile ${id}.`)
   }
 
@@ -95,6 +108,41 @@ async function readProfile(storage: StorageSession, id: string): Promise<Profile
     label: row.label,
     ...(typeof row.real_name === 'string' ? { realName: row.real_name } : {}),
     createdAt: row.created_at,
+  }
+}
+
+async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
+  const [versionRow] = await storage.execute('PRAGMA user_version')
+  if (versionRow?.user_version === PROFILE_DATABASE_VERSION) return
+  if (versionRow?.user_version !== 1) {
+    throw new Error('The local profile database cannot be migrated from its current version.')
+  }
+
+  await storage.execute('BEGIN IMMEDIATE')
+  let transactionOpen = true
+  try {
+    const [currentVersionRow] = await storage.execute('PRAGMA user_version')
+    if (currentVersionRow?.user_version === 1) {
+      await storage.execute(CREATE_CLAIMS_TABLE)
+      await storage.execute(`PRAGMA user_version = ${PROFILE_DATABASE_VERSION}`)
+    } else if (currentVersionRow?.user_version !== PROFILE_DATABASE_VERSION) {
+      throw new Error('The local profile database changed while it was being migrated.')
+    }
+
+    await storage.execute('COMMIT')
+    transactionOpen = false
+  } catch (error) {
+    if (transactionOpen) {
+      try {
+        await storage.execute('ROLLBACK')
+      } catch (rollbackError) {
+        throw new Error(
+          `Profile migration failed: ${errorMessage(error)} Rollback also failed: ${errorMessage(rollbackError)}`,
+          { cause: rollbackError },
+        )
+      }
+    }
+    throw error
   }
 }
 
@@ -143,6 +191,7 @@ export function createProfileRepository(
             created_at TEXT NOT NULL
           )
         `)
+        await storage.execute(CREATE_CLAIMS_TABLE)
         await storage.execute(
           'INSERT INTO profile_metadata (id, profile_id, label, real_name, created_at) VALUES (1, ?, ?, ?, ?)',
           [id, normalized.label, normalized.realName ?? null, createdAt],
@@ -210,6 +259,7 @@ export function createProfileRepository(
     try {
       await storage.openDatabase(filename)
       const profile = await readProfile(storage, id)
+      await migrateProfileDatabase(storage)
       return { profile, execute: storage.execute, dispose: storage.dispose }
     } catch (error) {
       await storage.dispose()

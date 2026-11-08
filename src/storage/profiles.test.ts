@@ -7,6 +7,7 @@ import type { SqlRow } from './protocol'
 interface FakeDatabase {
   version: number
   hasTable: boolean
+  hasClaimsTable: boolean
   profile?: {
     profile_id: string
     label: string
@@ -57,7 +58,7 @@ beforeEach(() => {
     async openDatabase(filename, options) {
       let database = databases.get(filename)
       if (!database && options?.create) {
-        database = { version: 0, hasTable: false }
+        database = { version: 0, hasTable: false, hasClaimsTable: false }
         databases.set(filename, database)
       }
       if (!database) throw new Error('Database does not exist.')
@@ -69,6 +70,10 @@ beforeEach(() => {
       const statement = sql.replaceAll(/\s+/g, ' ').trim()
       if (statement === 'BEGIN IMMEDIATE' || statement === 'COMMIT' || statement === 'ROLLBACK') return []
       if (statement === 'PRAGMA user_version') return [row({ user_version: activeDatabase.version })]
+      if (statement === 'PRAGMA user_version = 2') {
+        activeDatabase.version = 2
+        return []
+      }
       if (statement === 'PRAGMA user_version = 1') {
         activeDatabase.version = 1
         return []
@@ -78,6 +83,10 @@ beforeEach(() => {
       }
       if (statement.startsWith('CREATE TABLE profile_metadata')) {
         activeDatabase.hasTable = true
+        return []
+      }
+      if (statement.startsWith('CREATE TABLE claims')) {
+        activeDatabase.hasClaimsTable = true
         return []
       }
       if (statement.startsWith('INSERT INTO profile_metadata')) {
@@ -119,6 +128,8 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
 
   const opened = await repository.openProfile(first.id)
   expect(opened.profile).toEqual(first)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(2)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasClaimsTable).toBe(true)
   await opened.dispose()
   expect(initializeStorage).toHaveBeenCalledTimes(4)
 })
@@ -161,6 +172,7 @@ it('surfaces missing and unsupported profiles instead of creating or resetting t
   const versionedDatabase: FakeDatabase = {
     version: 7,
     hasTable: true,
+    hasClaimsTable: false,
     profile: {
       profile_id: profileIds[0],
       label: 'Preserve this profile',
@@ -175,4 +187,32 @@ it('surfaces missing and unsupported profiles instead of creating or resetting t
   expect(listing.errors[0].message).toMatch(/unsupported or incomplete/i)
   expect(versionedDatabase.version).toBe(7)
   expect(versionedDatabase.profile?.label).toBe('Preserve this profile')
+})
+
+it('migrates a version-one profile without changing its metadata', async () => {
+  const { repository } = createHarness()
+  const legacy: FakeDatabase = {
+    version: 1,
+    hasTable: true,
+    hasClaimsTable: false,
+    profile: {
+      profile_id: profileIds[0],
+      label: 'Existing profile',
+      real_name: 'Alex Example',
+      created_at: '2026-01-01T00:00:00.000Z',
+    },
+  }
+  databases.set(`/profile-${profileIds[0]}.sqlite3`, legacy)
+
+  const opened = await repository.openProfile(profileIds[0])
+
+  expect(opened.profile).toEqual({
+    id: profileIds[0],
+    label: 'Existing profile',
+    realName: 'Alex Example',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  })
+  expect(legacy.version).toBe(2)
+  expect(legacy.hasClaimsTable).toBe(true)
+  await opened.dispose()
 })

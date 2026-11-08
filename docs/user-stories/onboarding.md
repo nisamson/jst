@@ -31,8 +31,8 @@ cloud connection. Claim creation is deferred.
 The order and presentation of screens are not prescribed by this story. This
 journey describes intended behavior. The app currently implements SQLite/OPFS
 storage, multiple local profile persistence and discovery, profile creation,
-and a profile-scoped empty claims overview. Simulated cloud setup and claims
-listing are not yet implemented.
+and a profile-scoped claims overview with existing-claim display. Simulated
+cloud setup and claim creation are not yet implemented.
 
 ## Acceptance criteria
 
@@ -47,6 +47,9 @@ listing are not yet implemented.
   another profile never overwrites an existing database.
 - Optional real name and other profile-wide settings apply across that
   profile's claims. Profile switching must not leak records or setup state.
+- The claims overview displays each claim's identifier and metadata. The
+  app's record creation timestamp is separate from the optional
+  user-entered claim start date.
 - Onboarding finishes at the selected profile's claims overview, including a
   useful empty state for profiles without claims.
 - Claim creation, claim-number validation, duplicate-claim handling, and
@@ -84,9 +87,9 @@ listing are not yet implemented.
 - Synchronization, conflict resolution, and recovery guarantees remain
   unspecified. A connected provider does not by itself prove a cloud copy is
   current or recoverable.
-- Exact claim-number validation and the claim data model remain open.
-  Before claim metadata is implemented, distinguish app record creation time
-  from the optional user-entered claim date rather than guessing semantics.
+- Claim-number validation and claim creation/editing remain out of scope.
+  The optional user-entered claim date means the claim start date and remains
+  distinct from the app record creation timestamp.
   Claim creation/duplicate handling, activities, filing with ESD, and
   print/PDF export are outside this story.
 

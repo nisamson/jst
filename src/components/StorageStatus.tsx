@@ -56,21 +56,11 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
   }, [])
 
   return (
-    <Container size="md" py="md">
-      <Paper component="section" aria-label="Local storage" withBorder p="md" radius="md">
-        <Stack gap="sm">
-          {status.state === 'checking' && <Text component="output">Checking local storage...</Text>}
-          {status.state === 'blocked' && (
-            <>
-              <Alert color="red" title="Local storage is unavailable.">
-                <Text>{status.message}</Text>
-                <Text mt="xs">Storage-dependent features are blocked. No fallback storage will be used.</Text>
-              </Alert>
-              <Button variant="light" onClick={onRetry}>Retry storage setup</Button>
-            </>
-          )}
-          {status.state === 'ready' && (
-            <>
+    <Container size="var(--app-content-width)" px={{ base: 'md', sm: 0 }} py="md">
+      {status.state === 'ready' ? (
+        <StoragePersistenceContext.Provider value={requestPersistenceForProfileCreation}>
+          <Paper component="section" aria-label="Local storage" withBorder p="md" radius="md">
+            <Stack gap="sm">
               <Text component="output">Local SQLite storage is ready.</Text>
               {status.persistence && status.persistence !== 'granted' && (
                 <Alert color="yellow" role="note" title="Persistent storage is not confirmed">
@@ -85,13 +75,26 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
               <Text c="dimmed" size="sm">
                 Local records can still be lost or cleared, even with persistent storage permission. This is not a backup.
               </Text>
-              <StoragePersistenceContext.Provider value={requestPersistenceForProfileCreation}>
-                {children}
-              </StoragePersistenceContext.Provider>
-            </>
-          )}
-        </Stack>
-      </Paper>
+            </Stack>
+          </Paper>
+          {children}
+        </StoragePersistenceContext.Provider>
+      ) : (
+        <Paper component="section" aria-label="Local storage" withBorder p="md" radius="md">
+          <Stack gap="sm">
+            {status.state === 'checking' && <Text component="output">Checking local storage...</Text>}
+            {status.state === 'blocked' && (
+              <>
+                <Alert color="red" title="Local storage is unavailable.">
+                  <Text>{status.message}</Text>
+                  <Text mt="xs">Storage-dependent features are blocked. No fallback storage will be used.</Text>
+                </Alert>
+                <Button variant="light" onClick={onRetry}>Retry storage setup</Button>
+              </>
+            )}
+          </Stack>
+        </Paper>
+      )}
     </Container>
   )
 }

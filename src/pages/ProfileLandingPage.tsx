@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import CreateProfileForm from '../components/CreateProfileForm'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
 import type { ProfileListing } from '../storage/profiles'
@@ -71,7 +71,7 @@ function ProfileDiscovery({
   const hasDiscoveryErrors = Boolean(listing && listing.errors.length > 0)
 
   return (
-    <Container component="main" size="md" py="xl">
+    <Container component="main" size="var(--app-content-width)" py="xl">
       <Stack gap="xl">
         <Stack gap="xs">
           <Text c="violet.6" fw={700} size="sm" tt="uppercase" lts={1.3}>
@@ -129,7 +129,7 @@ function ProfileDiscovery({
           )}
 
           {listing && listing.profiles.length > 0 && (
-            <Stack component="ul" gap="sm" p={0} style={{ listStyle: 'none' }}>
+            <SimpleGrid component="ul" cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm" p={0} style={{ listStyle: 'none' }}>
               {listing.profiles.map((profile) => (
                 <Paper component="li" key={profile.id} withBorder p="md" radius="md">
                   <Group justify="space-between" wrap="nowrap">
@@ -147,7 +147,7 @@ function ProfileDiscovery({
                   </Group>
                 </Paper>
               ))}
-            </Stack>
+            </SimpleGrid>
           )}
 
           {listing && listing.profiles.length === 0 && !hasDiscoveryErrors && (

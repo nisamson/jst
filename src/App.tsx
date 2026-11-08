@@ -24,11 +24,13 @@ function App() {
   const url = new URL(location, window.location.origin)
   const profileIds = url.searchParams.getAll('profile')
   const profileId = profileIds.length === 1 ? profileIds[0] : undefined
+  const claimIds = url.searchParams.getAll('claim')
+  const claimId = claimIds.length === 1 ? claimIds[0] : undefined
 
   return (
     <StorageStatus>
       {url.pathname === '/claims'
-        ? <ClaimsPage profileId={profileId} onNavigate={navigate} />
+        ? <ClaimsPage profileId={profileId} claimId={claimId} onNavigate={navigate} />
         : <ProfileLandingPage onOpenProfile={(id) => navigate(`/claims?profile=${encodeURIComponent(id)}`)} />}
     </StorageStatus>
   )
