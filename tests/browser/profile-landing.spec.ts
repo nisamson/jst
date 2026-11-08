@@ -31,7 +31,7 @@ test('opens the selected profile claims overview and switches profiles', async (
   await expect(page.getByText('Profile: Profile two')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Change profile' }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await firstOption.click()
   await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profiles.first.id}`))
   await expect(page.getByText('Profile: Profile one')).toBeVisible()

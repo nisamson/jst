@@ -4,7 +4,7 @@ import StorageProbe from '../components/StorageProbe'
 
 export default function StorageDiagnosticsPage() {
   return (
-    <Container component="main" size="md" py="xl">
+    <Container component="main" size="var(--app-content-width)" py="xl">
       <Stack gap="lg">
         <Anchor href="/">Back to app</Anchor>
         <Title order={1}>Storage diagnostics</Title>
