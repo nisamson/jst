@@ -5,12 +5,17 @@ import SimulatedSyncDialog from '../components/SimulatedSyncDialog'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
 import type { Profile, ProfileListing } from '../storage/profiles'
 import type { CreateProfileInput } from '../storage/profiles'
-import { createProfile, listProfiles } from '../storage/profiles'
+import { createProfile, deleteProfile, listProfiles } from '../storage/profiles'
 
 type DiscoveryState =
   | { state: 'loading' }
   | { state: 'loaded'; listing: ProfileListing }
   | { state: 'error'; message: string }
+
+interface SetupFlow {
+  profile: Profile
+  continueToClaims: boolean
+}
 
 export default function ProfileLandingPage({ onOpenProfile }: { onOpenProfile: (id: string) => void }) {
   const [attempt, setAttempt] = useState(0)
@@ -32,7 +37,9 @@ function ProfileDiscovery({
 }) {
   const [discovery, setDiscovery] = useState<DiscoveryState>({ state: 'loading' })
   const [creatingProfile, setCreatingProfile] = useState(false)
-  const [setupProfile, setSetupProfile] = useState<Profile>()
+  const [setupFlow, setSetupFlow] = useState<SetupFlow>()
+  const [deletingProfileId, setDeletingProfileId] = useState<string>()
+  const [deletionError, setDeletionError] = useState<string>()
   const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
@@ -67,6 +74,35 @@ function ProfileDiscovery({
       }
     })
     setCreatingProfile(false)
+    setSetupFlow({ profile, continueToClaims: true })
+  }
+
+  function finishSetupFlow() {
+    if (!setupFlow) return
+    setSetupFlow(undefined)
+    if (setupFlow.continueToClaims) onOpenProfile(setupFlow.profile.id)
+  }
+
+  async function removeProfile(profile: Profile) {
+    setDeletingProfileId(profile.id)
+    setDeletionError(undefined)
+    try {
+      await deleteProfile(profile.id)
+      setDiscovery((current) => current.state === 'loaded'
+        ? {
+          state: 'loaded',
+          listing: {
+            ...current.listing,
+            profiles: current.listing.profiles.filter((item) => item.id !== profile.id),
+          },
+        }
+        : current)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown storage error.'
+      setDeletionError(`Could not delete ${profile.label}: ${message} Close other JST tabs using this profile and retry.`)
+    } finally {
+      setDeletingProfileId(undefined)
+    }
   }
 
   const listing = discovery.state === 'loaded' ? discovery.listing : undefined
@@ -129,6 +165,11 @@ function ProfileDiscovery({
               </Stack>
             </Alert>
           )}
+          {deletionError && (
+            <Alert color="red" title="Profile could not be deleted" role="alert">
+              {deletionError}
+            </Alert>
+          )}
 
           {listing && listing.profiles.length > 0 && (
             <SimpleGrid component="ul" cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm" p={0} style={{ listStyle: 'none' }}>
@@ -150,9 +191,20 @@ function ProfileDiscovery({
                       <Button
                         variant="default"
                         aria-label={`Set up simulated sync for ${profile.label}`}
-                        onClick={() => setSetupProfile(profile)}
+                        disabled={deletingProfileId !== undefined}
+                        onClick={() => setSetupFlow({ profile, continueToClaims: false })}
                       >
                         Simulated sync
+                      </Button>
+                      <Button
+                        color="red"
+                        variant="light"
+                        aria-label={`Delete ${profile.label}`}
+                        loading={deletingProfileId === profile.id}
+                        disabled={deletingProfileId !== undefined}
+                        onClick={() => void removeProfile(profile)}
+                      >
+                        Delete
                       </Button>
                     </Group>
                   </Group>
@@ -190,12 +242,14 @@ function ProfileDiscovery({
           </Group>
         </Group>
       </Stack>
-      {setupProfile && (
+      {setupFlow && (
         <SimulatedSyncDialog
-          key={setupProfile.id}
-          profileId={setupProfile.id}
-          profileLabel={setupProfile.label}
-          onClose={() => setSetupProfile(undefined)}
+          key={setupFlow.profile.id}
+          profileId={setupFlow.profile.id}
+          profileLabel={setupFlow.profile.label}
+          onClose={setupFlow.continueToClaims ? finishSetupFlow : () => setSetupFlow(undefined)}
+          onContinueLocally={setupFlow.continueToClaims ? finishSetupFlow : undefined}
+          onSetupComplete={setupFlow.continueToClaims ? finishSetupFlow : undefined}
         />
       )}
     </Container>

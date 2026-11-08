@@ -39,6 +39,52 @@ test('opens the selected profile claims overview and switches profiles', async (
   expect(profiles.first.id).not.toBe(profiles.second.id)
 })
 
+test('deletes only the selected profile immediately and preserves other profile records after reload', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+
+  for (const label of ['Profile to delete', 'Profile to keep']) {
+    await page.getByRole('button', { name: 'Create profile', exact: true }).click()
+    const form = page.locator('form')
+    await form.getByRole('textbox', { name: 'Profile label' }).fill(label)
+    await form.getByRole('button', { name: 'Create profile' }).click()
+    await page.getByRole('button', { name: 'Continue without syncing' }).click()
+    await expect(page.getByText(`Profile: ${label}`)).toBeVisible()
+    await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
+  }
+
+  await page.evaluate(async () => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const profile = (await profiles.listProfiles()).profiles.find((item) => item.label === 'Profile to keep')
+    if (!profile) throw new Error('The profile to keep was not found.')
+    const session = await profiles.openProfile(profile.id)
+    try {
+      await session.execute(
+        'INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES (?, ?, ?, ?)',
+        ['preserved-claim', 'Preserved claim', '2026-03-01T12:00:00.000Z', null],
+      )
+    } finally {
+      await session.dispose()
+    }
+  })
+
+  await page.getByRole('button', { name: 'Delete Profile to delete' }).click()
+  await expect(page.getByRole('button', { name: 'Profile to delete profile' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Profile to keep profile' })).toBeVisible()
+  await expect(page.getByRole('alert', { name: 'Profile could not be deleted' })).toHaveCount(0)
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Profile to delete profile' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Profile to keep profile' })).toBeVisible()
+  await page.getByRole('button', { name: 'Profile to keep profile' }).click()
+  await expect(page.getByRole('button', { name: 'Preserved claim' })).toBeVisible()
+})
+
 test('reports discovery failure and recovers when profile discovery is retried', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')

@@ -6,6 +6,9 @@ async function createProfile(page: Page, label: string) {
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill(label)
   await form.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await expect(page.getByText(`Profile: ${label}`)).toBeVisible()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: `${label} profile` })).toBeVisible()
 }
 

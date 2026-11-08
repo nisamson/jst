@@ -58,7 +58,7 @@ test('reloads a profile from the cached shell while offline without caching prof
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Offline profile')
   await form.getByRole('button', { name: 'Create profile' }).click()
-  await page.getByRole('button', { name: 'Offline profile profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
   await expect(page.getByText('Profile: Offline profile')).toBeVisible()
 
   await page.reload()
@@ -120,7 +120,7 @@ test('stages an app update until requested and keeps the existing profile databa
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Update-safe profile')
   await form.getByRole('button', { name: 'Create profile' }).click()
-  await page.getByRole('button', { name: 'Update-safe profile profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
   await expect(page.getByText('Profile: Update-safe profile')).toBeVisible()
   await page.reload()
   expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true)

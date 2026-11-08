@@ -13,6 +13,8 @@ test('simulated setup persists per profile without changing local profile metada
     const form = page.locator('form')
     await form.getByRole('textbox', { name: 'Profile label' }).fill(label)
     await form.getByRole('button', { name: 'Create profile' }).click()
+    await page.getByRole('button', { name: 'Continue without syncing' }).click()
+    await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
     await expect(page.getByRole('button', { name: `Set up simulated sync for ${label}` })).toBeVisible()
   }
 
@@ -23,18 +25,18 @@ test('simulated setup persists per profile without changing local profile metada
   await page.getByRole('button', { name: 'Connect simulated provider' }).click()
   await expect(page.getByRole('alert')).toContainText('Simulated setup complete')
   await expect(page.getByRole('alert')).toContainText('No data has been synced or backed up.')
-  await page.getByRole('button', { name: 'Continue locally' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
 
   await page.reload()
   await page.getByRole('button', { name: 'Set up simulated sync for Profile two' }).click()
   await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Continue locally' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
 
   await page.getByRole('button', { name: 'Set up simulated sync for Profile one' }).click()
   await expect(page.getByRole('alert')).toContainText('Simulated setup complete')
   await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Continue locally' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
   await expect(page.getByRole('button', { name: 'Set up simulated sync for Profile one' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Set up simulated sync for Profile two' })).toBeVisible()
 })
@@ -50,12 +52,14 @@ test('continuing locally cancels setup without saving connection state', async (
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Local only profile')
   await form.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: 'Set up simulated sync for Local only profile' })).toBeVisible()
   await page.reload()
 
   await page.getByRole('button', { name: 'Set up simulated sync for Local only profile' }).click()
   await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toBeVisible()
-  await page.getByRole('button', { name: 'Continue locally' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
   await page.getByRole('button', { name: 'Set up simulated sync for Local only profile' }).click()
   await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toBeVisible()
 })
@@ -71,10 +75,9 @@ test('simulated setup makes an unverified profile writable without granting pers
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Simulated access profile')
   await form.getByRole('button', { name: 'Create profile' }).click()
-  await page.getByRole('button', { name: 'Set up simulated sync for Simulated access profile' }).click()
   await page.getByRole('button', { name: 'Connect simulated provider' }).click()
-  await expect(page.getByRole('alert')).toContainText('Simulated setup complete')
-  await page.getByRole('button', { name: 'Continue locally' }).click()
+  await expect(page).toHaveURL(/\/claims\?profile=[0-9a-f-]+$/)
+  await expect(page.getByText('Profile: Simulated access profile')).toBeVisible()
 
   const access = await page.evaluate(async () => {
     const modulePath = '/src/storage/profiles.ts'

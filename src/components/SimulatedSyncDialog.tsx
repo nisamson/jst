@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Group, Loader, Modal, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Button, Group, Loader, Modal, Paper, Stack, Text, Title, Tooltip } from '@mantine/core'
 import { getSimulatedSyncState, saveSimulatedSyncState } from '../storage/simulated-sync-state'
 import type { SimulatedSyncState } from '../storage/simulated-sync-state'
 import { simulatedProvider } from '../sync/simulated-provider'
 import type { SimulatedCloudProfile } from '../sync/simulated-provider'
 
+const UNSYNCED_DATA_WARNING = 'Your data may be lost if this browser’s storage is cleared. Without syncing, there’s no cloud copy.'
+
 interface SimulatedSyncDialogProps {
   profileId: string
   profileLabel: string
   onClose: () => void
+  onContinueLocally?: () => void
+  onSetupComplete?: () => void
 }
 
 export default function SimulatedSyncDialog({
   profileId,
   profileLabel,
   onClose,
+  onContinueLocally,
+  onSetupComplete,
 }: SimulatedSyncDialogProps) {
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [cloudProfiles, setCloudProfiles] = useState<SimulatedCloudProfile[]>([])
@@ -63,6 +69,7 @@ export default function SimulatedSyncDialog({
       }
       await saveSimulatedSyncState(profileId, state)
       setSetupState(state)
+      onSetupComplete?.()
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : 'Simulated setup failed.'
       setSetupError(`${message} Your local profile is unchanged. Retry setup or continue locally.`)
@@ -74,7 +81,7 @@ export default function SimulatedSyncDialog({
   return (
     <Modal
       opened
-      onClose={onClose}
+      onClose={onContinueLocally ?? onClose}
       title="Simulated sync setup"
       centered
       closeOnEscape={!connecting}
@@ -154,11 +161,38 @@ export default function SimulatedSyncDialog({
           </Alert>
         )}
 
-        <Group justify="flex-end">
-          <Button variant="default" disabled={connecting} onClick={onClose}>
-            Continue locally
-          </Button>
-        </Group>
+        <Stack gap="xs">
+          <Alert color="yellow" title="Data loss risk" hiddenFrom="sm">
+            {UNSYNCED_DATA_WARNING}
+          </Alert>
+          <Tooltip label={UNSYNCED_DATA_WARNING} multiline maw={280}>
+            <Button
+              color="yellow"
+              variant="light"
+              fullWidth
+              leftSection={(
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M10.3 3.9 1.8 18.5A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.5L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                  <path d="M12 9v4m0 4h.01" />
+                </svg>
+              )}
+              disabled={connecting}
+              onClick={onContinueLocally ?? onClose}
+            >
+              Continue without syncing
+            </Button>
+          </Tooltip>
+        </Stack>
       </Stack>
     </Modal>
   )
