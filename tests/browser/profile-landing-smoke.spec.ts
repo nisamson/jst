@@ -1,12 +1,14 @@
 import { expect, test } from '@playwright/test'
 
-test('first use explains local profiles without creating a database or dead-end action', async ({ page }) => {
+test('first use offers profile creation without creating a database before the user submits', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
   await expect(page.getByRole('main')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Your profiles' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No local profiles yet' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /create profile/i })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Create profile', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Create a local profile' })).toBeVisible()
+  await page.locator('form').getByRole('button', { name: 'Cancel' }).click()
 
   const profileFiles = await page.evaluate(async () => {
     const directory = await navigator.storage.getDirectory()

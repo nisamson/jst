@@ -21,7 +21,8 @@ SQLite runs in a dedicated module worker using the official
 and requests persistent browser storage, warning when that permission is
 pending, denied, or unavailable. Optional permission requests never block
 database reads/writes. Local records are not a guaranteed backup.
-Profile features are not implemented yet; initialization creates no database.
+The app supports local profile discovery, selection, and creation. Profile
+initialization is explicit: storage setup alone creates no profile database.
 
 Use HTTPS or localhost. Both Vite development and preview send the required
 headers below. Production hosting must also send them:
@@ -44,7 +45,8 @@ file; `{ create: true }` explicitly allows creation. Use bound values with
 and await `dispose()` when finished. Do not retry failed writes automatically:
 a lost worker response cannot prove whether a write committed.
 See [the architecture](docs/architecture.md) for platform limitations and
-the remaining profile-persistence work.
+the storage model. See [the project structure](docs/project-structure.md) for
+a quick code map.
 
 ## Tests
 

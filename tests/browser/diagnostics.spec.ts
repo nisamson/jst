@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
 
+declare global {
+  interface Window {
+    persistRequestCount?: number
+  }
+}
+
 test('a human can verify reopen/reload persistence, detect a mismatch, and clear test data', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Storage diagnostics' }).click()
@@ -41,17 +47,25 @@ test('unsupported storage does not expose diagnostic actions', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Read saved test record' })).toHaveCount(0)
 })
 
-test('a pending optional persistence permission does not block database reads and writes', async ({ page }) => {
+test('opening storage diagnostics does not request optional persistence', async ({ page }) => {
   await page.addInitScript(() => {
+    window.persistRequestCount = 0
     Object.defineProperty(navigator.storage, 'persisted', { value: async () => false })
-    Object.defineProperty(navigator.storage, 'persist', { value: () => new Promise(() => {}) })
+    Object.defineProperty(navigator.storage, 'persist', {
+      value: async () => {
+        window.persistRequestCount = (window.persistRequestCount ?? 0) + 1
+        return true
+      },
+    })
   })
   await page.goto('/diagnostics/storage')
-  await expect(page.getByRole('note')).toContainText('permission is pending')
+  await expect(page.getByRole('note')).toHaveCount(0)
+  expect(await page.evaluate(() => window.persistRequestCount)).toBe(0)
   await page.getByRole('button', { name: 'Write and reopen test record' }).click()
   await expect(page.getByRole('status', { name: 'Diagnostic result' })).toContainText('verified after closing and reopening')
   await page.getByRole('button', { name: 'Read saved test record' }).click()
   await expect(page.getByRole('status', { name: 'Diagnostic result' })).toContainText('matches the expected token')
+  expect(await page.evaluate(() => window.persistRequestCount)).toBe(0)
 })
 
 test('failed diagnostic writes report no success and can be retried', async ({ page }) => {
