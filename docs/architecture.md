@@ -6,9 +6,10 @@ Most of this architecture describes planned features. The React and TypeScript
 Vite application has a worker-based SQLite/OPFS storage foundation and
 capability/persistence reporting, isolated local profile persistence and
 discovery, a landing page for profile creation and selection, and a
-profile-scoped claims overview with a sidebar and selected-claim metadata, and
-an optional simulated sync-setup dialog. Claim creation, PWA support, export,
-and real cloud synchronization are not yet implemented.
+profile-scoped claims overview with a sidebar and selected-claim metadata, an
+optional simulated sync-setup dialog, and an installable PWA shell with
+pre-cached assets for offline use. Claim creation, export, and real cloud
+synchronization are not yet implemented.
 
 The app supports multiple local profiles per installation, each backed by a
 separate SQLite database. A profile has a user-chosen label independent of the
@@ -71,6 +72,11 @@ provider APIs directly from the browser, without an application backend.
 Provider adapters are an abstraction for supporting different services; at
 most one provider is connected per profile at a time.
 
+The PWA can reopen offline only after its assets have first been cached while
+online. It does not guarantee profile data is available or durable: profile
+databases remain in OPFS and may be cleared by the browser. App updates are
+staged until the user reloads, avoiding a mixture of old and new cached assets.
+
 ### Implemented storage foundation
 
 The app uses the official
@@ -122,6 +128,23 @@ overwrite data. A successful setup is recorded in the selected profile's
 `simulated_sync_setup` table, so state survives reloads without crossing
 profiles. A simulated connected state is not evidence of synchronization or
 backup.
+
+### Installable offline shell
+
+The production build includes a web app manifest, square scalable icons, and a
+service worker generated from a small template by a Vite build hook. Its
+content-hashed cache precaches the built HTML, JavaScript, CSS, icons, SQLite
+WebAssembly, and other emitted assets.
+Navigations fall back to the cached app entry point, allowing direct routes
+such as `/claims` to load offline after a prior online visit. The service
+worker caches application assets only; profile SQLite files are accessed
+through OPFS and are never placed in Cache Storage.
+
+New service-worker versions remain waiting until the app offers the user a
+reload action. This keeps the current page on one complete app version while
+the replacement is staged. Offline status messaging describes shell
+availability separately from profile persistence and backup. A first visit
+without network access is not supported.
 
 The version 2 claims table is scoped to its profile database and stores a
 stable claim ID, display identifier, app record creation timestamp, and
