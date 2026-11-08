@@ -28,7 +28,7 @@ export default defineConfig({
     },
     {
       name: `${browser}-production`,
-      testIgnore: ['**/storage.spec.ts', '**/profiles.spec.ts'],
+      testIgnore: ['**/storage.spec.ts', '**/profiles.spec.ts', '**/profile-landing.spec.ts'],
       use: { ...devices[device], baseURL: 'http://127.0.0.1:4177' },
     },
   ]),

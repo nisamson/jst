@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Alert, Button, Container, Paper, Stack, Text } from '@mantine/core'
 import { initializeStorage } from '../storage/local-storage'
 import type { StorageSession } from '../storage/local-storage'
 import type { Persistence } from '../storage/environment'
 import { requestPersistence } from '../storage/environment'
-import './StorageStatus.css'
 
 type Status =
   | { state: 'checking' }
@@ -47,34 +47,42 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
   }, [])
 
   return (
-    <section className="storage-status" aria-label="Local storage">
-      {status.state === 'checking' && <output>Checking local storage...</output>}
-      {status.state === 'blocked' && (
-        <>
-          <p role="alert">Local storage is unavailable. {status.message}</p>
-          <p>Storage-dependent features are blocked. No fallback storage will be used.</p>
-          <button type="button" onClick={onRetry}>Retry storage setup</button>
-        </>
-      )}
-      {status.state === 'ready' && (
-        <>
-          <output>Local SQLite storage is ready.</output>
-          {status.persistence !== 'granted' && (
-            <p role="note">
-              {status.persistence === undefined
-                ? 'Persistent storage permission is pending. You can continue while the browser waits for your choice.'
-                : status.persistence === 'denied'
-                ? 'Persistent storage was not granted.'
-                : status.persistence === 'unavailable'
-                  ? 'Persistent storage permission is not supported by this browser.'
-                  : 'Persistent storage permission could not be checked or requested.'}
-              {' '}The browser may automatically clear local records.
-            </p>
+    <Container size="md" py="md">
+      <Paper component="section" aria-label="Local storage" withBorder p="md" radius="md">
+        <Stack gap="sm">
+          {status.state === 'checking' && <Text component="output">Checking local storage...</Text>}
+          {status.state === 'blocked' && (
+            <>
+              <Alert color="red" title="Local storage is unavailable.">
+                <Text>{status.message}</Text>
+                <Text mt="xs">Storage-dependent features are blocked. No fallback storage will be used.</Text>
+              </Alert>
+              <Button variant="light" onClick={onRetry}>Retry storage setup</Button>
+            </>
           )}
-          <p>Local records can still be lost or cleared, even with persistent storage permission. This is not a backup.</p>
-          {children}
-        </>
-      )}
-    </section>
+          {status.state === 'ready' && (
+            <>
+              <Text component="output">Local SQLite storage is ready.</Text>
+              {status.persistence !== 'granted' && (
+                <Alert color="yellow" role="note" title="Persistent storage is not confirmed">
+                  {status.persistence === undefined
+                    ? 'Persistent storage permission is pending. You can continue while the browser waits for your choice.'
+                    : status.persistence === 'denied'
+                    ? 'Persistent storage was not granted.'
+                    : status.persistence === 'unavailable'
+                      ? 'Persistent storage permission is not supported by this browser.'
+                      : 'Persistent storage permission could not be checked or requested.'}
+                  {' '}The browser may automatically clear local records.
+                </Alert>
+              )}
+              <Text c="dimmed" size="sm">
+                Local records can still be lost or cleared, even with persistent storage permission. This is not a backup.
+              </Text>
+              {children}
+            </>
+          )}
+        </Stack>
+      </Paper>
+    </Container>
   )
 }

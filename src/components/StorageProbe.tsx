@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Alert, Button, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import { clearDiagnosticRecord, readDiagnosticRecord, writeDiagnosticRecord } from '../storage/diagnostics'
 import type { DiagnosticRecord } from '../storage/diagnostics'
 
@@ -53,32 +54,31 @@ export default function StorageProbe() {
   }
 
   return (
-    <section className="storage-probe" aria-labelledby="probe-heading" aria-busy={busy}>
-      <h2 id="probe-heading">Persistence check</h2>
-      <p>Write a synthetic record, reload this page, then read the saved record to compare its token. Keep the same URL and browser.</p>
-      <div className="probe-actions">
-        <button type="button" disabled={busy} onClick={() => void run('write')}>Write and reopen test record</button>
-        <button type="button" disabled={busy} onClick={() => void run('read')}>Read saved test record</button>
-        <button type="button" disabled={busy || !expectedToken} onClick={() => window.location.reload()}>Reload page</button>
-        <button type="button" disabled={busy || !expectedToken} onClick={() => void run('clear')}>Clear diagnostic test data</button>
-      </div>
-      <output aria-label="Diagnostic result">{message}</output>
+    <Stack component="section" aria-labelledby="probe-heading" aria-busy={busy} gap="md">
+      <Title id="probe-heading" order={2}>Persistence check</Title>
+      <Text>Write a synthetic record, reload this page, then read the saved record to compare its token. Keep the same URL and browser.</Text>
+      <Group gap="sm" wrap="wrap">
+        <Button type="button" disabled={busy} onClick={() => void run('write')}>Write and reopen test record</Button>
+        <Button type="button" variant="light" disabled={busy} onClick={() => void run('read')}>Read saved test record</Button>
+        <Button type="button" variant="default" disabled={busy || !expectedToken} onClick={() => window.location.reload()}>Reload page</Button>
+        <Button type="button" color="red" variant="light" disabled={busy || !expectedToken} onClick={() => void run('clear')}>Clear diagnostic test data</Button>
+      </Group>
+      <Text component="output" aria-label="Diagnostic result">{message}</Text>
       {error && (
-        <div role="alert">
-          <p>{error}</p>
-          <p>Try writing a test record, check available storage, and close other diagnostics tabs before retrying.</p>
-        </div>
+        <Alert color="red" title={error}>
+          Try writing a test record, check available storage, and close other diagnostics tabs before retrying.
+        </Alert>
       )}
       {record && (
-        <dl>
-          <dt>Record token</dt>
-          <dd><code>{record.token}</code></dd>
-          <dt>Written at</dt>
-          <dd><time dateTime={record.writtenAt}>{record.writtenAt}</time></dd>
-          <dt>SQLite version</dt>
-          <dd>{record.sqliteVersion}</dd>
-        </dl>
+        <SimpleGrid component="dl" cols={{ base: 1, sm: 2 }} spacing="xs">
+          <Text component="dt" fw={600}>Record token</Text>
+          <Text component="dd" m={0} style={{ overflowWrap: 'anywhere' }}><Code>{record.token}</Code></Text>
+          <Text component="dt" fw={600}>Written at</Text>
+          <Text component="dd" m={0}><time dateTime={record.writtenAt}>{record.writtenAt}</time></Text>
+          <Text component="dt" fw={600}>SQLite version</Text>
+          <Text component="dd" m={0}>{record.sqliteVersion}</Text>
+        </SimpleGrid>
       )}
-    </section>
+    </Stack>
   )
 }
