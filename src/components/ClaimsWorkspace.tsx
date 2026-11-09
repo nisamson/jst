@@ -6,6 +6,7 @@ import ClaimOverview from './ClaimOverview'
 import ClaimSidebar from './ClaimSidebar'
 import ConfirmDeletionDialog from './ConfirmDeletionDialog'
 import ClaimFormDialog from './ClaimFormDialog'
+import ClaimActivities from './ClaimActivities'
 
 export default function ClaimsWorkspace({
   profile,
@@ -96,12 +97,16 @@ export default function ClaimsWorkspace({
               </Stack>
             </Alert>
           ) : selectedClaim ? (
-            <ClaimOverview
-              claim={selectedClaim}
-              canDelete={!readOnly}
-              onDelete={() => setClaimToDelete(selectedClaim)}
-              onEdit={() => setEditing({ claim: selectedClaim })}
-            />
+            <Stack>
+              <ClaimOverview
+                claim={selectedClaim}
+                canDelete={!readOnly}
+                onDelete={() => setClaimToDelete(selectedClaim)}
+                onEdit={() => setEditing({ claim: selectedClaim })}
+              />
+              <ClaimActivities key={`${profile.id}-${selectedClaim.id}`} profileId={profile.id}
+                claimId={selectedClaim.id} readOnly={readOnly} />
+            </Stack>
           ) : (
             <Paper component="section" aria-labelledby="empty-claims-heading" withBorder p="lg" radius="md">
               <Stack gap="xs">

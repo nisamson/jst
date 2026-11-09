@@ -32,6 +32,13 @@ navigation inside the `StorageStatus` capability boundary.
   `ClaimsWorkspace` composes profile access context, `ClaimSidebar` navigation,
   `ClaimOverview` details, `ClaimFormDialog` create/edit forms, empty/stale states,
   and confirmed deletion.
+- `ClaimActivities` owns selected-claim activity loading/retries, list selection,
+  and mutation state. It composes `ActivityDetails`, `ActivityFormDialog`, and
+  `DeleteActivityDialog`, keyed by profile and claim to prevent stale content.
+- `src/storage/activity-model.ts` defines activity types, normalization,
+  validation, labels, and non-blocking local-calendar/evidence warnings.
+  `src/storage/activities.ts` implements claim-scoped reads and transactional
+  CRUD, validates stored metadata, and rechecks profile write access.
 - `src/storage/claims.ts` normalizes claim input and provides transactional
   create/update/delete operations. `src/storage/activity-schema.ts` defines the
   version 4 activity table/index; profile initialization and migration share it.
@@ -64,6 +71,10 @@ navigation inside the `StorageStatus` capability boundary.
 Playwright uses Chromium and Firefox on Windows; WebKit is excluded there
 because the SQLite OPFS proxy worker does not start reliably on this host.
 See the README for browser setup and platform-specific validation details.
+
+Activity coverage lives in `src/storage/activities.test.ts` and
+`tests/browser/activity-lifecycle.spec.ts`; schema/migration and claim-cascade
+regressions remain in `activity-schema.spec.ts` and `claim-lifecycle.spec.ts`.
 
 ## Manual claims testing
 
