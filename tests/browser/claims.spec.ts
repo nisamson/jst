@@ -59,6 +59,7 @@ test('opens an empty profile-scoped overview, survives reload, and switches prof
   await expect(page.getByText('Profile: First profile')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
   await expect(page.getByRole('button', { name: /create claim/i })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Developer claim tools' })).toBeVisible()
 
   await page.reload()
   await expect(page.getByText('Profile: First profile')).toBeVisible()
@@ -144,6 +145,11 @@ test('lists persistent claims, selects their metadata, and isolates them by prof
   await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${firstProfileId}&claim=claim-older$`))
   await expect(page.getByText('Claim identifier: Claim 2025')).toBeVisible()
   await expect(page.getByText('Claim start date: Not provided')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Claim 2025', exact: true })).toBeFocused()
+  await page.goBack()
+  await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
+  await page.goForward()
+  await expect(page.getByText('Claim identifier: Claim 2025')).toBeVisible()
   await page.reload()
   await expect(page.getByText('Claim identifier: Claim 2025')).toBeVisible()
 
@@ -224,11 +230,27 @@ test('deletes only the selected claim when identifiers are duplicated', async ({
     }
   }, profileId)
   await page.goto(`/claims?profile=${profileId}&claim=duplicate-claim-id`)
+  const duplicate = page.getByRole('button', { name: 'Claim 2026, record duplicate-claim-id', exact: true })
+  const original = page.getByRole('button', { name: 'Claim 2026, record claim-newer', exact: true })
+  await expect(duplicate).toHaveAttribute('aria-pressed', 'true')
+  await expect(original).toHaveAttribute('aria-pressed', 'false')
+  await expect(duplicate).toContainText('Record ID: duplicate-claim-id')
+  await expect(original).toContainText('Record ID: claim-newer')
+  await original.focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=claim-newer$`))
+  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: claim-newer')
+  await duplicate.focus()
+  await page.keyboard.press('Space')
+  await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=duplicate-claim-id$`))
+  await page.reload()
   await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: duplicate-claim-id')
   await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Delete claim?' })
   await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
   await dialog.getByRole('button', { name: 'Delete claim' }).click()
+  await expect(dialog).toBeHidden()
 
   const remainingClaimIds = await page.evaluate(async (id) => {
     const modulePath = '/src/storage/profiles.ts'
@@ -309,6 +331,8 @@ test('recovers from a stale claim selection by selecting an available claim', as
   await page.goto(`/claims?profile=${profileId}&claim=deleted-claim`)
   await expect(page.getByRole('alert')).toContainText('The selected claim is unavailable')
   await expect(page.getByRole('heading', { name: 'Claim overview' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'No claims yet' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Delete claim', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Claim 2026' }).click()
   await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
@@ -341,6 +365,95 @@ test('reports claim read failures without showing a partial overview', async ({ 
   await expect(page.getByRole('alert')).toContainText('Claims could not be loaded')
   await expect(page.getByRole('alert')).toContainText('no such table: claims')
   await expect(page.getByRole('heading', { name: 'Claim overview' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Claims', exact: true })).toHaveCount(0)
+
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      await session.execute('CREATE TABLE claims (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, created_at TEXT NOT NULL, claim_start_date TEXT)')
+      await session.execute(
+        'INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES (?, ?, ?, ?)',
+        ['recovered-claim', 'Recovered claim', '2026-03-01T12:00:00.000Z', null],
+      )
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await page.getByRole('button', { name: 'Retry opening profile' }).click()
+  await expect(page.getByText('Claim identifier: Recovered claim')).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('stacks claim navigation on mobile and permits read-only keyboard selection without writes', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Read-only claims')
+  const profileId = await seedProfileClaims(page, 'Read-only claims')
+  const longIdentifier = 'LongClaimIdentifier'.repeat(12)
+  await page.evaluate(async ({ id, identifier }) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      await session.execute('UPDATE claims SET identifier = ? WHERE id = ?', [identifier, 'claim-newer'])
+    } finally {
+      await session.dispose()
+    }
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => false })
+  }, { id: profileId, identifier: longIdentifier })
+  await page.getByRole('button', { name: 'Read-only claims profile', exact: true }).click()
+  await expect(page.getByRole('note')).toContainText('profile-content changes are blocked.')
+  await expect(page.getByRole('button', { name: 'Delete claim', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Add dummy claims', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Remove dummy claims', exact: true })).toBeDisabled()
+  const writeError = await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/developer-claims.ts'
+    const tools: typeof import('../../src/storage/developer-claims') = await import(modulePath)
+    try {
+      await tools.changeDummyClaims(id, 'add')
+      return ''
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }, profileId)
+  expect(writeError).toContain('This profile is read-only.')
+
+  const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
+  const detail = page.getByRole('region', { name: 'Claim overview' })
+  const desktopList = await navigation.boundingBox()
+  const desktopDetail = await detail.boundingBox()
+  expect(desktopList).not.toBeNull()
+  expect(desktopDetail).not.toBeNull()
+  expect(desktopDetail!.x).toBeGreaterThan(desktopList!.x + desktopList!.width)
+
+  await page.setViewportSize({ width: 375, height: 812 })
+  await expect(page.getByRole('button', { name: longIdentifier, exact: true })).toBeVisible()
+  await expect(detail).toContainText(`Claim identifier: ${longIdentifier}`)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const olderClaim = page.getByRole('button', { name: 'Claim 2025', exact: true })
+  await olderClaim.focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=claim-older$`))
+  await expect(olderClaim).toHaveAttribute('aria-pressed', 'true')
+  await expect(olderClaim).toBeFocused()
+  await expect(detail).toContainText('Claim identifier: Claim 2025')
+  await expect(page.getByRole('button', { name: 'Delete claim', exact: true })).toBeDisabled()
+  const mobileList = await navigation.boundingBox()
+  const mobileDetail = await detail.boundingBox()
+  expect(mobileDetail!.y).toBeGreaterThan(mobileList!.y + mobileList!.height)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+
+  await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('heading', { name: 'Your profiles' })).toBeVisible()
 })
 
 test('direct navigation without a usable profile guides the user back to profile selection', async ({ page }) => {
@@ -353,8 +466,165 @@ test('direct navigation without a usable profile guides the user back to profile
 
 test('an unavailable profile shows an error without displaying profile content', async ({ page }) => {
   await page.goto('/claims?profile=33333333-3333-4333-8333-333333333333')
-  await expect(page.getByRole('alert')).toContainText('This profile could not be opened')
+  await expect(page.getByRole('alert', { name: 'This profile could not be opened', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Return to profiles' }).click()
   await expect(page.getByRole('heading', { name: 'Your profiles' })).toBeVisible()
+})
+
+test('local developer controls add and remove persistent dummy claims without source-module access', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Preview dummy tools')
+  await page.getByRole('button', { name: 'Preview dummy tools profile', exact: true }).click()
+  const tools = page.getByRole('region', { name: 'Developer claim tools' })
+  await expect(tools).toBeVisible()
+  const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(breadcrumb).toHaveText('Profiles/Preview dummy tools/Claims')
+  await expect(breadcrumb.getByRole('region', { name: 'Developer claim tools' })).toHaveCount(0)
+  const emptyState = await page.getByRole('region', { name: 'No claims yet' }).boundingBox()
+  const toolsPanel = await tools.boundingBox()
+  expect(emptyState).not.toBeNull()
+  expect(toolsPanel).not.toBeNull()
+  expect(toolsPanel!.y).toBeGreaterThan(emptyState!.y + emptyState!.height)
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
+  await expect(navigation.getByRole('button')).toHaveCount(4)
+  await page.reload()
+  await expect(navigation.getByRole('button')).toHaveCount(4)
+  await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
+  await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
+})
+
+test('developer dummy claims persist, remain profile-scoped, and can be removed without touching other claims', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'This fixture uses Vite source modules.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Dummy tools one')
+  await createProfile(page, 'Dummy tools two')
+  const profileId = await seedProfileClaims(page, 'Dummy tools one')
+  await page.getByRole('button', { name: 'Dummy tools one profile', exact: true }).click()
+  const tools = page.getByRole('region', { name: 'Developer claim tools' })
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
+  await expect(navigation.getByRole('button')).toHaveCount(6)
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  await expect(navigation.getByRole('button')).toHaveCount(6)
+  await navigation.getByRole('button', { name: 'Dummy claim 2026, record developer-dummy-claim-duplicate', exact: true }).click()
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: developer-dummy-claim-duplicate')
+
+  await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Dummy tools two profile', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  await expect(navigation.getByRole('button')).toHaveCount(4)
+
+  await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Dummy tools one profile', exact: true }).click()
+  await navigation.getByRole('button', { name: 'Dummy claim 2026, record developer-dummy-claim-duplicate', exact: true }).click()
+  await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
+  await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profileId}$`))
+  await expect(navigation.getByRole('button')).toHaveCount(2)
+  await expect(navigation.getByRole('button', { name: 'Claim 2026', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(navigation.getByRole('button')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Dummy tools two profile', exact: true }).click()
+  await expect(navigation.getByRole('button')).toHaveCount(4)
+})
+
+test('developer dummy claim changes roll back on failure and allow retry', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'This fixture uses Vite source modules.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Dummy rollback')
+  const profileId = await seedProfileClaims(page, 'Dummy rollback')
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      await session.execute(`
+        CREATE TRIGGER reject_dummy_insert BEFORE INSERT ON claims
+        WHEN NEW.id = 'developer-dummy-claim-duplicate'
+        BEGIN SELECT RAISE(FAIL, 'Dummy insertion failed'); END
+      `)
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await page.getByRole('button', { name: 'Dummy rollback profile', exact: true }).click()
+  const tools = page.getByRole('region', { name: 'Developer claim tools' })
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('alert')).toContainText('Dummy insertion failed')
+  await expect(page.getByRole('navigation', { name: 'Claims', exact: true }).getByRole('button')).toHaveCount(2)
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      const rows = await session.execute('SELECT id FROM claims')
+      if (rows.length !== 2) throw new Error('Failed insertion left partial dummy data.')
+      await session.execute('DROP TRIGGER reject_dummy_insert')
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  await expect(tools.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Claims', exact: true }).getByRole('button')).toHaveCount(6)
+
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      await session.execute(`
+        CREATE TRIGGER reject_dummy_delete BEFORE DELETE ON claims
+        WHEN OLD.id = 'developer-dummy-claim-duplicate'
+        BEGIN SELECT RAISE(FAIL, 'Dummy removal failed'); END
+      `)
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
+  await expect(tools.getByRole('alert')).toContainText('Dummy removal failed')
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try {
+      const rows = await session.execute('SELECT id FROM claims')
+      if (rows.length !== 6) throw new Error('Failed removal deleted part of the dummy data.')
+      await session.execute('DROP TRIGGER reject_dummy_delete')
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
+  await expect(page.getByRole('navigation', { name: 'Claims', exact: true }).getByRole('button')).toHaveCount(2)
 })

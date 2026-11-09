@@ -1,21 +1,23 @@
-import { useEffect, useState } from 'react'
-import { Alert, Anchor, Breadcrumbs, Button, Container, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Alert, Anchor, Breadcrumbs, Button, Container, Group, Loader, Stack, Text, Title } from '@mantine/core'
 import { openProfile } from '../storage/profiles'
-import type { Profile } from '../storage/profiles'
-import type { Persistence } from '../storage/environment'
+import type { ProfileSession } from '../storage/profiles'
 import { deleteProfileClaim, listClaims } from '../storage/claims'
 import type { Claim } from '../storage/claims'
-import ClaimOverview from '../components/ClaimOverview'
-import ClaimSidebar from '../components/ClaimSidebar'
-import ConfirmDeletionDialog from '../components/ConfirmDeletionDialog'
+import ClaimsWorkspace from '../components/ClaimsWorkspace'
+import { developerToolsEnabled } from '../storage/developer-tools'
+
+const DeveloperClaimsTools = developerToolsEnabled()
+  ? lazy(() => import('../components/DeveloperClaimsTools'))
+  : undefined
 
 type ProfileState =
   | { state: 'loading' }
   | {
     state: 'loaded'
-    profile: Profile
+    profile: ProfileSession['profile']
     claims: Claim[]
-    access: { mode: 'read-write' | 'read-only'; persistence: Persistence; syncConnected: boolean }
+    access: ProfileSession['access']
   }
   | { state: 'error'; title: string; message: string }
 
@@ -67,7 +69,6 @@ function ClaimsOverview({
   onNavigate: (path: string) => void
 }) {
   const [profileState, setProfileState] = useState<ProfileState>({ state: 'loading' })
-  const [claimToDelete, setClaimToDelete] = useState<Claim>()
 
   useEffect(() => {
     let cancelled = false
@@ -125,25 +126,24 @@ function ClaimsOverview({
     }
   }, [profileId])
 
-  function selectClaim(claim: Claim) {
-    onNavigate(`/claims?profile=${encodeURIComponent(profileId)}&claim=${encodeURIComponent(claim.id)}`)
-  }
-
   async function removeClaim(claim: Claim) {
     await deleteProfileClaim(profileId, claim.id)
     setProfileState((current) => current.state === 'loaded'
       ? { ...current, claims: current.claims.filter((item) => item.id !== claim.id) }
       : current)
-    setClaimToDelete(undefined)
-    onNavigate(`/claims?profile=${encodeURIComponent(profileId)}`)
   }
 
-  const selectedClaimId = profileState.state === 'loaded'
-    ? claimId ?? profileState.claims[0]?.id
-    : claimId
-  const selectedClaim = profileState.state === 'loaded'
-    ? profileState.claims.find((claim) => claim.id === selectedClaimId)
-    : undefined
+  async function changeDummyClaims(action: 'add' | 'remove') {
+    if (!developerToolsEnabled()) return
+    const tools = await import('../storage/developer-claims')
+    const claims = await tools.changeDummyClaims(profileId, action)
+    setProfileState((current) => current.state === 'loaded' ? { ...current, claims } : current)
+    if (action === 'remove' && claimId && profileState.state === 'loaded'
+      && profileState.claims.some((claim) => claim.id === claimId)
+      && !claims.some((claim) => claim.id === claimId)) {
+      onNavigate(`/claims?profile=${encodeURIComponent(profileId)}`)
+    }
+  }
 
   return (
     <Container component="main" size="var(--app-content-width)" py="xl">
@@ -167,6 +167,7 @@ function ClaimsOverview({
             </Breadcrumbs>
           </nav>
           <Title order={1}>Claims overview</Title>
+          <Text c="dimmed">Review the claims stored in your selected local profile.</Text>
         </Stack>
 
         {profileState.state === 'loading' && (
@@ -190,60 +191,24 @@ function ClaimsOverview({
         )}
 
         {profileState.state === 'loaded' && (
-          <>
-            <Text component="output" aria-live="polite">
-              Profile: <strong>{profileState.profile.label}</strong>
-            </Text>
-            {profileState.access.mode === 'read-only' && (
-              <Alert color="yellow" role="note" title="Profile is read-only">
-                {profileState.access.persistence === 'denied'
-                  ? 'Persistent storage was not granted.'
-                  : profileState.access.persistence === 'unavailable'
-                    ? 'This browser cannot verify persistent storage.'
-                    : profileState.access.persistence === 'unknown'
-                      ? 'The persistent-storage status is unknown.'
-                      : 'Checking persistent storage failed.'}{' '}
-                Simulated sync is not connected. You can view this profile, but profile-content changes are blocked.
-                The local data is not protected or backed up.
-              </Alert>
-            )}
-            {claimId && !selectedClaim && (
-              <Alert color="yellow" title="The selected claim is unavailable">
-                <Stack gap="sm">
-                  <Text>Choose an available claim from this profile. No other profile's claims are shown.</Text>
-                  <Button variant="light" onClick={() => onNavigate(`/claims?profile=${encodeURIComponent(profileId)}`)}>
-                    Return to claims overview
-                  </Button>
-                </Stack>
-              </Alert>
-            )}
-            <Grid>
-              <Grid.Col span={{ base: 12, sm: 4 }}>
-                <ClaimSidebar
-                  claims={profileState.claims}
-                  selectedClaimId={selectedClaimId}
-                  onSelect={selectClaim}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, sm: 8 }}>
-                <ClaimOverview
-                  claim={selectedClaim}
-                  canDelete={profileState.access.mode === 'read-write'}
-                  onDelete={selectedClaim ? () => setClaimToDelete(selectedClaim) : undefined}
-                />
-              </Grid.Col>
-            </Grid>
-          </>
+          <ClaimsWorkspace
+            profile={profileState.profile}
+            access={profileState.access}
+            claims={profileState.claims}
+            claimId={claimId}
+            onNavigate={onNavigate}
+            onDelete={removeClaim}
+          />
+        )}
+        {profileState.state === 'loaded' && DeveloperClaimsTools && (
+          <Suspense fallback={null}>
+            <DeveloperClaimsTools
+              readOnly={profileState.access.mode === 'read-only'}
+              onChange={changeDummyClaims}
+            />
+          </Suspense>
         )}
       </Stack>
-      {claimToDelete && (
-        <ConfirmDeletionDialog
-          itemType="claim"
-          name={claimToDelete.identifier}
-          onClose={() => setClaimToDelete(undefined)}
-          onConfirm={() => removeClaim(claimToDelete)}
-        />
-      )}
     </Container>
   )
 }

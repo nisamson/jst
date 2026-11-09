@@ -28,6 +28,9 @@ navigation inside the `StorageStatus` capability boundary.
 
 - React pages orchestrate user actions; they use services in `src/storage/`
   rather than issuing SQL themselves.
+- `ClaimsPage` owns profile loading, retries, and claim data.
+  `ClaimsWorkspace` composes profile access context, `ClaimSidebar` navigation,
+  `ClaimOverview` details, empty/stale states, and confirmed deletion.
 - `src/storage/profiles.ts` owns profile create/list/open operations. Each
   profile has a stable ID and a separate SQLite database in OPFS.
 - `src/storage/simulated-sync-state.ts` persists successful simulated setup
@@ -57,3 +60,21 @@ navigation inside the `StorageStatus` capability boundary.
 Playwright uses Chromium and Firefox on Windows; WebKit is excluded there
 because the SQLite OPFS proxy worker does not start reliably on this host.
 See the README for browser setup and platform-specific validation details.
+
+## Manual claims testing
+
+With `npm run dev`, or `npm run build` followed by `npm run preview` on
+`localhost`, `127.0.0.1`, or `[::1]`, open a profile to find **Developer claim tools**.
+**Add dummy claims** inserts a repeatable set of four real,
+profile-scoped SQLite records (duplicates, optional dates, and a long label).
+They survive reload and can also be deleted individually through the normal UI.
+**Remove dummy claims** deletes only the four reserved `developer-dummy-claim-*`
+record IDs owned by these tools, without confirmation; other claims are retained.
+Both operations are transactional, and failures leave existing records unchanged.
+
+These controls respect read-only access. If disabled, return to profiles, use
+**Set up simulated sync** for that profile, and connect the simulated provider,
+then reopen the profile. This is only a local write-access simulation, not backup.
+The controls and fixture module are bundled for local preview, but disabled on
+non-loopback production hosts. This hostname check is a convenience gate, not
+authentication; the existing profile write-access checks still apply.
