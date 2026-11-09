@@ -4,7 +4,8 @@
 
 This is the reviewed design for #18. The version 4 activities schema and
 transactional migration are implemented by #39 alongside claim lifecycle work.
-Activity CRUD and entry UI, attachments, and ESD integration remain future work.
+Claim-scoped activity CRUD and entry UI are implemented by #30. Weekly grouping,
+search, attachments, and ESD integration remain separate work.
 
 The app records information for the user's own log. It does not determine
 eligibility, approve activities, assess compliance, or file anything with ESD.
@@ -62,7 +63,7 @@ All shared fields are required and non-null.
 | Field | Application type / SQLite type | Meaning and validation |
 | --- | --- | --- |
 | `id` | UUID string / TEXT | App-generated stable ID; never changes during an edit |
-| `claim_id` | UUID string / TEXT | Existing owning claim's stable ID in this profile |
+| `claim_id` | Stable ID string / TEXT | Existing owning claim's ID in this profile; newly created claims use UUIDs, but legacy/developer claim IDs are retained |
 | `activity_date` | Calendar-date string / TEXT | Real calendar date in `YYYY-MM-DD` form |
 | `kind` | String union / TEXT | `employer_contact`, `worksource_activity`, or `other_activity` |
 | `created_at` | UTC timestamp string / TEXT | App-record creation time |
@@ -163,6 +164,10 @@ Do not impose restrictive format checks or arbitrary field-length limits.
 Real calendar dates, UUIDs, timestamp formats, and enum values are validated
 at the data-access boundary; a date-shaped string alone is not sufficient
 calendar validation.
+Activity IDs must be UUIDs. Owning claim IDs are resolved against the selected
+profile's claims table rather than requiring UUID syntax, preserving access to
+legacy and developer fixture claims. Every read, edit, and delete is scoped to
+that stable claim ID; edits cannot reparent an activity.
 
 All required fields must be satisfied to save a record. There is no
 incomplete-draft state. Future-date and missing-documentation warnings do not
@@ -185,8 +190,11 @@ avoids detail-table joins and the additional invariant of exactly one matching
 detail row, at the cost of unused columns and conditional checks.
 
 The following DDL expresses the relational constraints implemented in
-`src/storage/activity-schema.ts`. Future activity-service validation must handle canonical formats, actual
-calendar validity, text normalization, and warning behavior.
+`src/storage/activity-schema.ts`. `activity-model.ts` and `activities.ts` enforce
+canonical formats, actual calendar validity, text normalization, and warning
+behavior at the data-access boundary. Reads reject malformed stored metadata
+rather than presenting it as valid. Writes use explicit transactions, including
+rollback after SQLite trigger failures.
 
 ```sql
 CREATE TABLE activities (
