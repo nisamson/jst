@@ -88,6 +88,8 @@ test('upgrades an existing version-one profile without losing its metadata', asy
     const profile = (await storage.listProfiles()).profiles.find((item) => item.label === 'Legacy profile')
     if (!profile) throw new Error('Legacy test profile was not found.')
     const legacy = await storage.openProfile(profile.id)
+    await legacy.execute('DROP TABLE activity_files')
+    await legacy.execute('DROP TABLE activity_links')
     await legacy.execute('DROP TABLE activities')
     await legacy.execute('DROP TABLE claims')
     await legacy.execute('PRAGMA user_version = 1')
@@ -104,7 +106,7 @@ test('upgrades an existing version-one profile without losing its metadata', asy
   })
 
   expect(migration.profile.label).toBe('Legacy profile')
-  expect(migration.version).toBe(5)
+  expect(migration.version).toBe(6)
   expect(migration.claimsTableExists).toBe(true)
 })
 

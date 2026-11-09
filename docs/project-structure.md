@@ -43,6 +43,12 @@ navigation inside the `StorageStatus` capability boundary.
   validation, labels, and non-blocking local-calendar/evidence warnings.
   `src/storage/activities.ts` implements claim-scoped reads and transactional
   CRUD, validates stored metadata, and rechecks profile write access.
+- `EvidenceEditor` manages draft links, files, and optional file descriptions
+  inside the activity form; `EvidenceDetails` provides safe links and deliberate
+  downloads. `src/storage/evidence-model.ts` defines limits and validation;
+  `evidence-schema.ts` defines the v6 link/file tables and cascading ownership;
+  `evidence.ts` loads metadata, replaces evidence inside the activity save
+  transaction, and retrieves scoped blob bytes only on demand.
 - `src/storage/claims.ts` normalizes claim input and provides transactional
   create/update/delete operations. `src/storage/activity-schema.ts` defines the
   version 4 activity table/index; profile initialization and migration share it.
@@ -83,6 +89,10 @@ Week derivation tests are in `src/storage/activity-weeks.test.ts`; weekly
 navigation, gaps, boundaries, and date-edit behavior are covered by
 `tests/browser/weekly-activities.spec.ts` in Chromium/Firefox development and
 production-preview projects.
+Evidence policy/service tests are in `src/storage/evidence-model.test.ts` and
+`evidence.test.ts`; browser UI/download/cancellation/retry coverage lives in
+`tests/browser/activity-evidence.spec.ts`. Real SQLite migration, ownership,
+and cascading cleanup are covered by `tests/browser/evidence-storage.spec.ts`.
 
 ## Manual claims testing
 

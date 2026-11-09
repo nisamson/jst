@@ -13,6 +13,7 @@ import ActivityWeekControls from './ActivityWeekControls'
 import ActivityWeekNavigator from './ActivityWeekNavigator'
 import DeleteActivityDialog from './DeleteActivityDialog'
 import { activitySelectionLabel } from './record-labels'
+import type { EvidenceDraft } from '../storage/evidence-model'
 
 type State = { state: 'loading' } | { state: 'error'; message: string }
   | { state: 'loaded'; activities: Activity[]; readOnly: boolean }
@@ -70,8 +71,8 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
     if (nextWeek !== week) setSelectedId(undefined)
   }
 
-  async function save(input: ActivityInput) {
-    const saved = await saveProfileActivity(profileId, claimId, input, editing?.activity?.id)
+  async function save(input: ActivityInput, evidence: EvidenceDraft) {
+    const saved = await saveProfileActivity(profileId, claimId, input, editing?.activity?.id, evidence)
     setState((current) => current.state === 'loaded'
       ? {
         ...current,
@@ -175,7 +176,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
                                 onSelect={setSearchSelectedId} label={`Search results for week ${weekRangeLabel(resultWeek)}`} />
                             </Box>
                           ))}
-                          {searchSelected && <ActivityDetails activity={searchSelected} readOnly={cannotWrite}
+                          {searchSelected && <ActivityDetails activity={searchSelected} profileId={profileId} claimId={claimId} readOnly={cannotWrite}
                             onEdit={() => setEditing({ activity: searchSelected })} onDelete={() => setDeleting(searchSelected)} />}
                         </Stack>
                       )}
@@ -204,7 +205,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
                   {weekActivities.length === 0 ? <Text>No activities recorded for this week.</Text> : (
                     <ActivityList activities={weekActivities} selectedId={selectedId} onSelect={setSelectedId} />
                   )}
-                  {selected && (!searchExpanded || !searchSelected) && <ActivityDetails activity={selected} readOnly={cannotWrite}
+                  {selected && (!searchExpanded || !searchSelected) && <ActivityDetails activity={selected} profileId={profileId} claimId={claimId} readOnly={cannotWrite}
                     onEdit={() => setEditing({ activity: selected })} onDelete={() => setDeleting(selected)} />}
                 </Stack>
               </Grid.Col>

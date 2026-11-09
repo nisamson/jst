@@ -4,6 +4,9 @@ import { Alert, Button, Fieldset, Group, Modal, NativeSelect, Stack, Text, Texta
 import { activityKinds, activityWarnings, contactMethods, contactTypes, localCalendarDate, normalizeActivity } from '../storage/activity-model'
 import type { Activity, ActivityInput, ActivityKind } from '../storage/activity-model'
 import { employerFields, worksourceFields } from './activity-fields'
+import EvidenceEditor from './EvidenceEditor'
+import { emptyEvidence, validateEvidence } from '../storage/evidence-model'
+import type { EvidenceDraft } from '../storage/evidence-model'
 
 export default function ActivityFormDialog({
   activity, initialDate, readOnly, onSave, onClose,
@@ -11,15 +14,16 @@ export default function ActivityFormDialog({
   activity?: Activity
   initialDate?: string
   readOnly: boolean
-  onSave: (input: ActivityInput) => Promise<void>
+  onSave: (input: ActivityInput, evidence: EvidenceDraft) => Promise<void>
   onClose: () => void
 }) {
   const [input, setInput] = useState<ActivityInput>(activity ?? { kind: 'employer_contact', activity_date: initialDate ?? localCalendarDate() })
+  const [evidence, setEvidence] = useState<EvidenceDraft>(activity?.evidence ?? emptyEvidence())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const busy = useRef(false)
   const dateInput = useRef<HTMLInputElement>(null)
-  const warnings = activityWarnings(input)
+  const warnings = activityWarnings(input, undefined, evidence)
   const title = activity ? 'Edit activity' : 'Add activity'
 
   function setField(field: keyof ActivityInput, value: string) {
@@ -32,10 +36,11 @@ export default function ActivityFormDialog({
     try {
       if (dateInput.current && !dateInput.current.validity.valid) throw new Error('Choose a complete, valid activity date.')
       const normalized = normalizeActivity(input)
+      validateEvidence(evidence)
       busy.current = true
       setSaving(true)
       setError(undefined)
-      await onSave(normalized)
+      await onSave(normalized, evidence)
     } catch (failure) {
       setError(`${failure instanceof Error ? failure.message : 'The activity could not be saved.'} Your entries are unchanged. Retry when ready.`)
     } finally {
@@ -83,7 +88,7 @@ export default function ActivityFormDialog({
                   <Textarea label="Activity description" required autosize minRows={2} maxRows={6} value={input.activity_description ?? ''}
                     onChange={(event) => setField('activity_description', event.currentTarget.value)} />
                   <Textarea label="Documentation description (optional)" autosize minRows={2} maxRows={6}
-                    description="Describe supporting evidence kept outside the app; no files are attached."
+                    description="Plain-text notes about supporting evidence, whether attached below or kept outside the app."
                     value={input.documentation_description ?? ''} onChange={(event) => setField('documentation_description', event.currentTarget.value)} />
                   {input.kind === 'worksource_activity' && worksourceFields.map(({ field, label }) => (
                     <TextInput key={field} label={label} value={input[field] ?? ''} onChange={(event) => setField(field, event.currentTarget.value)} />
@@ -92,6 +97,7 @@ export default function ActivityFormDialog({
               )}
             </Stack>
           </Fieldset>
+          <EvidenceEditor value={evidence} onChange={setEvidence} disabled={saving || readOnly} />
           {warnings.map((warning) => <Alert key={warning} color="yellow" role="note">{warning}</Alert>)}
           {readOnly && <Alert color="yellow" title="Profile is read-only">Activity changes are blocked.</Alert>}
           {error && <Alert color="red" title="Activity could not be saved">{error}</Alert>}

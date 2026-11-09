@@ -87,6 +87,11 @@ beforeEach(() => {
       if (statement === 'PRAGMA foreign_keys = ON') return []
       if (statement === 'PRAGMA foreign_keys') return [row({ foreign_keys: 1 })]
       if (statement === 'ALTER TABLE claims ADD COLUMN overview TEXT') return []
+      if (statement === 'PRAGMA user_version = 6') {
+        activeDatabase.version = 6
+        return []
+      }
+      if (statement.startsWith('CREATE TABLE activity_') || statement.startsWith('CREATE INDEX activity_')) return []
       if (statement === 'PRAGMA user_version = 5') {
         activeDatabase.version = 5
         return []
@@ -191,7 +196,7 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
 
   const opened = await repository.openProfile(first.id)
   expect(opened.profile).toEqual(first)
-  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(5)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(6)
   expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasClaimsTable).toBe(true)
   expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
@@ -304,7 +309,7 @@ it('migrates a version-one profile without changing its metadata', async () => {
     realName: 'Alex Example',
     createdAt: '2026-01-01T00:00:00.000Z',
   })
-  expect(legacy.version).toBe(5)
+  expect(legacy.version).toBe(6)
   expect(legacy.hasClaimsTable).toBe(true)
   expect(legacy.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
@@ -330,7 +335,7 @@ it('migrates a version-two profile by adding simulated setup state', async () =>
   const opened = await repository.openProfile(profileIds[0])
 
   expect(opened.profile.label).toBe('Existing profile')
-  expect(existing.version).toBe(5)
+  expect(existing.version).toBe(6)
   expect(existing.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
 })

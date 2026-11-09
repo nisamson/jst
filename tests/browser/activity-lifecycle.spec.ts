@@ -374,6 +374,8 @@ test('load errors do not look empty and can be retried; legacy read-only claims 
   await sql(page, profileId, `UPDATE activities SET updated_at = '${original[0]!.updated_at}'`)
   await activities.getByRole('button', { name: 'Retry loading activities', exact: true }).click()
   await expect(activities).toContainText('Stored activity')
+  await sql(page, profileId, 'DROP TABLE activity_files')
+  await sql(page, profileId, 'DROP TABLE activity_links')
   await sql(page, profileId, 'DROP TABLE activities')
   await sql(page, profileId, 'ALTER TABLE claims DROP COLUMN overview')
   await sql(page, profileId, 'PRAGMA user_version = 3')

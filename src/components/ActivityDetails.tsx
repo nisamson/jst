@@ -4,9 +4,13 @@ import { activityKinds, activityWarnings, contactMethods, contactTypes } from '.
 import type { Activity } from '../storage/activity-model'
 import { employerFields, worksourceFields } from './activity-fields'
 import RecordTechnicalDetails from './RecordTechnicalDetails'
+import EvidenceDetails from './EvidenceDetails'
+import { emptyEvidence } from '../storage/evidence-model'
 
-export default function ActivityDetails({ activity, readOnly, onEdit, onDelete }: {
+export default function ActivityDetails({ activity, profileId, claimId, readOnly, onEdit, onDelete }: {
   activity: Activity
+  profileId: string
+  claimId: string
   readOnly: boolean
   onEdit: () => void
   onDelete: () => void
@@ -49,7 +53,9 @@ export default function ActivityDetails({ activity, readOnly, onEdit, onDelete }
             )}
           </>
         )}
-        {activityWarnings(activity).map((warning) => <Text key={warning} size="sm" c="dimmed">{warning}</Text>)}
+        <EvidenceDetails key={`${activity.id}-${activity.updated_at}`} evidence={activity.evidence ?? emptyEvidence()}
+          profileId={profileId} claimId={claimId} activityId={activity.id} />
+        {activityWarnings(activity, undefined, activity.evidence).map((warning) => <Text key={warning} size="sm" c="dimmed">{warning}</Text>)}
         <Divider label="Record information" labelPosition="left" />
         <Text size="sm"><strong>Created:</strong> <time dateTime={activity.created_at}>{new Date(activity.created_at).toLocaleString()}</time></Text>
         <Text size="sm"><strong>Last edited:</strong> <time dateTime={activity.updated_at}>{new Date(activity.updated_at).toLocaleString()}</time></Text>

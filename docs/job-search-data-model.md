@@ -5,8 +5,8 @@
 This is the reviewed design for #18. The version 4 activities schema and
 transactional migration are implemented by #39 alongside claim lifecycle work.
 Claim-scoped activity CRUD and entry UI are implemented by #30, and the derived
-weekly overview/selected-week view by #31. Search, attachments, and ESD integration
-remain separate work.
+weekly overview/selected-week view by #31. Claim-scoped search is implemented by
+#32; local links and file attachments by #55. ESD integration remains out of scope.
 
 The app records information for the user's own log. It does not determine
 eligibility, approve activities, assess compliance, or file anything with ESD.
@@ -153,12 +153,52 @@ file path, or verification that evidence exists. WorkSource location fields
 describe where the activity was completed and are optional, including for
 online activities.
 
-For either kind, a missing documentation description produces a non-blocking
-reminder to retain supporting evidence. It does not prevent saving and must
-not claim the user has no evidence: evidence may exist outside the app.
-When attachment support is introduced, account for attached evidence so that
-the eventual reminder applies when neither description nor supporting file
-evidence is present. No attachment field or table is introduced here.
+For either kind, a non-blocking reminder to retain supporting evidence appears
+only when there is no documentation description, link, or attached file. It
+does not prevent saving or determine evidence sufficiency for ESD. It must not
+claim the user has no evidence: evidence may exist outside the app.
+
+## Local supporting evidence (#55)
+
+All three activity kinds support multiple links and files. An always-visible
+section in the activity create/edit dialog manages evidence alongside the
+activity. Save commits activity fields, links, files, and descriptions in one
+transaction; Cancel discards pending changes without modifying existing records.
+Kind changes preserve evidence. Existing documentation descriptions remain
+plain text and are not interpreted as URLs or file paths.
+
+- Up to 20 HTTP/HTTPS links per activity; optional labels have a 200-character
+  limit, URLs a 2,048-character limit. Embedded credentials and other schemes
+  are rejected. Duplicate URLs are allowed. Navigation is deliberate and
+  opens a new tab with opener protection; the app never fetches links itself.
+- Up to 10 files per activity, 10 MiB each and 25 MiB combined, including
+  retained files. Any file type is accepted, with optional 500-character
+  plain-text descriptions. File names and declared types are untrusted metadata.
+  Names/types are limited to 255 characters; names must be nonempty.
+- Files are download-only, never previewed, executed, or opened automatically.
+  Details show name, declared type, size, and optional description. Downloads
+  use an opaque binary MIME type and sanitized filename; users must still
+  exercise caution when opening downloaded files outside the app.
+
+Schema version 6 adds `activity_links` and `activity_files`, each owned by an
+activity with `ON DELETE CASCADE`. File bytes are SQLite blobs inside the
+profile's existing OPFS database, not separate staged uploads. Metadata loads
+with claim activities without blob bytes; bytes are read only for deliberate
+retrieval and remain scoped to profile, claim, activity, and file. Updating a
+description does not read or replace its file's bytes. Activity/claim deletion
+cascades to evidence; profile deletion removes its database.
+
+Pending files remain in memory until Save, so abandoned/cancelled drafts leave
+no orphan uploads. Actual browser quota may still prevent saving within these
+application limits. Storage failures roll back the transaction and retain the
+form entries for correction/retry rather than silently dropping attachments.
+Evidence is local-only, not cloud-synced or backed up, and browser persistence
+does not guarantee durability.
+
+Writable profiles migrate transactionally. Older read-only schemas remain
+viewable without migration and have no in-app evidence; current read-only
+profiles permit links/downloads but prohibit mutations. None of these features
+claim evidence is sufficient, verified, or approved by ESD.
 
 ## Validation and editing
 
