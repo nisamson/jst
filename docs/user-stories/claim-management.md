@@ -152,3 +152,38 @@ can find a particular record without reviewing every week.
   navigation between weeks.
 - Attachments, export, provider integration, synchronization, and ESD filing
   remain separate feature work.
+
+## Claims browsing design (#28, #33)
+
+- Use a master-detail layout: a bordered claims navigation panel beside the
+  selected claim on desktop, stacked above it below Mantine's `sm` breakpoint.
+  Keep the list in normal document flow, without a nested scroll area.
+- Retain newest-first ordering (creation timestamp descending, stable ID as
+  tie-breaker) and automatically show the newest claim when the route has no
+  claim ID. Explicit selections update the existing profile/claim query
+  parameters, preserving direct links, reload, and browser back/forward.
+- Each claim is a keyboard-operable selection button in a named navigation
+  list, with `aria-pressed` indicating the current selection. Show its optional
+  start date, and show the full stable record ID for duplicate identifiers so
+  even claims with matching labels and dates can be distinguished. Wrap long
+  identifiers rather than truncating them. Selection leaves focus on the
+  button; the detail region announces the updated selection politely.
+- The detail panel shows the identifier, stable record ID, original creation
+  timestamp, optional start date, and the existing confirmed deletion action.
+  Do not introduce claim creation/editing controls or activity placeholders
+  that imply those later supertasks are already implemented.
+- Show profile context, claim count, and a read-only/view-and-edit badge above
+  the workspace. Keep a Profiles breadcrumb and an explicit Switch profile
+  action available. Read-only mode still permits selection, but disables
+  deletion and retains the explanation of persistence and simulated sync.
+- While opening a profile, show an announced loading state without old profile
+  content. Storage errors replace the workspace, explain that no data changed,
+  and offer retry or return to profiles. Retrying preserves the requested
+  claim ID and rechecks access.
+- A genuinely empty profile shows one empty-state panel explaining that claim
+  entry is not available yet. An explicit missing claim ID instead shows the
+  stale-selection warning, no claim metadata or deletion control, and a way
+  to return to the newest available claim or select from the current profile.
+  Never substitute another claim for an explicit unavailable selection.
+- Keep profile sessions keyed by profile ID and retry attempt, so navigation
+  cannot expose another profile's data or retain its deletion dialog.
