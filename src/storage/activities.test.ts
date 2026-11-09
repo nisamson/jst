@@ -142,7 +142,7 @@ it('loads only the selected claim and leaves old read-only schemas unmodified', 
     return [storedRow()]
   })
   await expect(listActivities(execute, claimId)).resolves.toHaveLength(1)
-  expect(execute).toHaveBeenLastCalledWith(expect.stringContaining('WHERE claim_id = ? ORDER BY activity_date DESC'), [claimId])
+  expect(execute).toHaveBeenCalledWith(expect.stringContaining('WHERE claim_id = ? ORDER BY activity_date DESC'), [claimId])
   execute.mockImplementation(async (sql) => sql === 'PRAGMA user_version' ? [{ user_version: 3 }] : [{ id: claimId }])
   await expect(listActivities(execute, claimId)).resolves.toEqual([])
   expect(execute).not.toHaveBeenCalledWith(expect.stringContaining('CREATE'))

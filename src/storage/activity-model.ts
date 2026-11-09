@@ -1,4 +1,5 @@
 import { isCalendarDate } from './calendar-date'
+import type { ActivityEvidence } from './evidence-model'
 
 export const activityKinds = [
   { value: 'employer_contact', label: 'Employer contact' },
@@ -48,6 +49,7 @@ export type Activity = ActivityDetails & {
   claim_id: string
   created_at: string
   updated_at: string
+  evidence?: ActivityEvidence
 }
 
 export function normalizeActivity(input: ActivityInput): ActivityDetails {
@@ -89,13 +91,14 @@ export function localCalendarDate(now = new Date()) {
   return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-export function activityWarnings(input: ActivityInput, today = localCalendarDate()) {
+export function activityWarnings(input: ActivityInput, today = localCalendarDate(), evidence?: ActivityEvidence) {
   const warnings: string[] = []
   if (isCalendarDate(input.activity_date) && input.activity_date > today) {
     warnings.push('This activity date is in the future. You can still save it; review that it is the date you intended.')
   }
-  if (input.kind !== 'employer_contact' && !input.documentation_description?.trim()) {
-    warnings.push('Consider retaining supporting evidence. No documentation description is recorded here; evidence may exist outside the app.')
+  if (input.kind !== 'employer_contact' && !input.documentation_description?.trim()
+    && !evidence?.links.length && !evidence?.files.length) {
+    warnings.push('Consider retaining supporting evidence. No documentation description, links, or files are recorded here; evidence may exist outside the app.')
   }
   return warnings
 }

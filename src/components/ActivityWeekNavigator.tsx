@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Group, Paper, Stack, Text, Title } from '@mantine/core'
+import { Button, Group, Paper, Stack, Switch, Text, Title } from '@mantine/core'
 import { weekDisplayLabel, weekRangeLabel } from '../storage/activity-weeks'
 import type { ActivityWeeks } from '../storage/activity-weeks'
 
@@ -10,16 +10,21 @@ export default function ActivityWeekNavigator({ weeks, selectedWeek, onSelect }:
   selectedWeek: number
   onSelect: (week: number) => void
 }) {
+  const [hideEmpty, setHideEmpty] = useState(false)
   const [browsing, setBrowsing] = useState<{ selectedWeek: number; newest: number; page: number }>()
   const { groups, newest, totalWeeks } = weeks
-  const totalPages = Math.ceil(totalWeeks / weeksPerPage)
-  const selectedIndex = newest === undefined ? 0 : Math.max(0, Math.min(totalWeeks - 1, (newest - selectedWeek) / 7))
+  const recordedWeeks = [...groups.keys()].toSorted((left, right) => right - left)
+  const shownWeeks = hideEmpty ? recordedWeeks.length : totalWeeks
+  const totalPages = Math.ceil(shownWeeks / weeksPerPage)
+  const selectedIndex = hideEmpty ? Math.max(0, recordedWeeks.indexOf(selectedWeek))
+    : newest === undefined ? 0 : Math.max(0, Math.min(totalWeeks - 1, (newest - selectedWeek) / 7))
   const selectedPage = Math.floor(selectedIndex / weeksPerPage)
   const page = browsing?.selectedWeek === selectedWeek && browsing.newest === newest
     ? Math.min(browsing.page, totalPages - 1) : selectedPage
   const firstIndex = page * weeksPerPage
   const visibleWeeks = newest === undefined ? []
-    : Array.from({ length: Math.min(weeksPerPage, totalWeeks - firstIndex) }, (_, index) => newest - (firstIndex + index) * 7)
+    : hideEmpty ? recordedWeeks.slice(firstIndex, firstIndex + weeksPerPage)
+      : Array.from({ length: Math.min(weeksPerPage, totalWeeks - firstIndex) }, (_, index) => newest - (firstIndex + index) * 7)
   function browse(nextPage: number) {
     if (newest !== undefined) setBrowsing({ selectedWeek, newest, page: nextPage })
   }
@@ -30,7 +35,12 @@ export default function ActivityWeekNavigator({ weeks, selectedWeek, onSelect }:
         {newest === undefined ? <Text size="sm">No recorded activity weeks yet.</Text> : (
           <>
             <Text size="sm">{totalWeeks} {totalWeeks === 1 ? 'week' : 'weeks'}, {totalWeeks - groups.size} empty</Text>
-            {totalPages > 1 && <Text size="xs">Showing weeks {firstIndex + 1}-{Math.min(firstIndex + weeksPerPage, totalWeeks)} of {totalWeeks}, newest first</Text>}
+            <Switch label="Hide empty weeks" checked={hideEmpty} onChange={(event) => {
+              setHideEmpty(event.currentTarget.checked)
+              setBrowsing(undefined)
+            }} />
+            {hideEmpty && !groups.has(selectedWeek) && <Text size="sm">The selected week has no activities and is hidden from this overview.</Text>}
+            {totalPages > 1 && <Text size="xs">Showing weeks {firstIndex + 1}-{Math.min(firstIndex + weeksPerPage, shownWeeks)} of {shownWeeks}, newest first</Text>}
             <Stack gap="xs">
               {visibleWeeks.map((week) => {
                 const count = groups.get(week)?.length ?? 0

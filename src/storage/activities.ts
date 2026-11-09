@@ -3,6 +3,9 @@ import type { SqlRow } from './protocol'
 import { openProfile } from './profiles'
 import { activityTextFields, normalizeActivity } from './activity-model'
 import type { Activity, ActivityInput } from './activity-model'
+import { listClaimEvidence, replaceEvidence } from './evidence'
+import { emptyEvidence, prepareEvidence } from './evidence-model'
+import type { EvidenceDraft, PreparedEvidence } from './evidence-model'
 
 const columns = [
   'id', 'claim_id', 'activity_date', 'kind', 'created_at', 'updated_at',
@@ -69,11 +72,12 @@ export async function listActivities(execute: StorageSession['execute'], claimId
     `SELECT ${columns.join(', ')} FROM activities WHERE claim_id = ? ORDER BY activity_date DESC, created_at DESC, id`,
     [claimId],
   )
-  return rows.map((row) => parseActivity(row, claimId))
+  const evidence = await listClaimEvidence(execute, claimId)
+  return rows.map((row) => ({ ...parseActivity(row, claimId), evidence: evidence.get(String(row.id)) ?? emptyEvidence() }))
 }
 
 export async function saveActivity(
-  execute: StorageSession['execute'], claimId: string, input: ActivityInput, id?: string,
+  execute: StorageSession['execute'], claimId: string, input: ActivityInput, id?: string, evidence?: PreparedEvidence,
 ): Promise<Activity> {
   const details = normalizeActivity(input)
   if (id !== undefined) validateId(id)
@@ -87,14 +91,15 @@ export async function saveActivity(
         [...editableColumns.map((column) => values[column] ?? null), id, claimId],
       )
       if (!row) throw new Error('The selected activity no longer exists in this claim. Reload activities and retry.')
-      return parseActivity(row, claimId)
+      const saved = parseActivity(row, claimId)
+      return evidence ? { ...saved, evidence: await replaceEvidence(execute, claimId, saved.id, evidence) } : saved
     }
     const activity: Activity = { ...details, id: crypto.randomUUID(), claim_id: claimId, created_at: now, updated_at: now }
     await execute(
       `INSERT INTO activities (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
       columns.map((column) => activity[column] ?? null),
     )
-    return activity
+    return evidence ? { ...activity, evidence: await replaceEvidence(execute, claimId, activity.id, evidence) } : activity
   })
 }
 
@@ -116,12 +121,18 @@ export async function loadProfileActivities(profileId: string, claimId: string) 
   }
 }
 
-export async function saveProfileActivity(profileId: string, claimId: string, input: ActivityInput, id?: string) {
+export async function saveProfileActivity(profileId: string, claimId: string, input: ActivityInput, id?: string, evidence?: EvidenceDraft) {
   normalizeActivity(input)
+  const prepared = evidence ? await prepareEvidence(evidence) : undefined
   const session = await openProfile(profileId)
   try {
     if (session.access.mode !== 'read-write') throw new Error('This profile is read-only. Activity changes are blocked.')
-    return await saveActivity(session.execute, claimId, input, id)
+    return await saveActivity(session.execute, claimId, input, id, prepared)
+  } catch (failure) {
+    if (failure instanceof Error && /SQLITE_FULL|quota|disk.*full|not enough.*space/i.test(failure.message)) {
+      throw new Error('There is not enough browser or device storage to save this activity. Remove some pending files or free storage, then retry. Existing records have not been changed.', { cause: failure })
+    }
+    throw failure
   } finally {
     await session.dispose()
   }

@@ -3,8 +3,9 @@ import type { StorageSession } from './local-storage'
 import { getPersistenceStatus } from './environment'
 import type { Persistence } from './environment'
 import { createActivitySchema } from './activity-schema'
+import { createEvidenceSchema } from './evidence-schema'
 
-const PROFILE_DATABASE_VERSION = 5
+const PROFILE_DATABASE_VERSION = 6
 const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
 const CREATE_CLAIMS_TABLE = `
@@ -135,7 +136,7 @@ async function readProfile(storage: StorageSession, id: string): Promise<Profile
 async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   const [versionRow] = await storage.execute('PRAGMA user_version')
   if (versionRow?.user_version === PROFILE_DATABASE_VERSION) return
-  if (typeof versionRow?.user_version !== 'number' || versionRow.user_version < 1 || versionRow.user_version > 4) {
+  if (typeof versionRow?.user_version !== 'number' || versionRow.user_version < 1 || versionRow.user_version > 5) {
     throw new Error('The local profile database cannot be migrated from its current version.')
   }
 
@@ -156,6 +157,8 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
         await createActivitySchema(storage.execute)
       } else if (currentVersion === 4) {
         await storage.execute(ADD_CLAIM_OVERVIEW)
+      } else if (currentVersion === 5) {
+        await createEvidenceSchema(storage.execute)
       } else {
         throw new Error('The local profile database cannot be migrated from its current version.')
       }
@@ -313,6 +316,7 @@ export function createProfileRepository(
         await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
         await createActivitySchema(storage.execute)
         await storage.execute(ADD_CLAIM_OVERVIEW)
+        await createEvidenceSchema(storage.execute)
         await storage.execute(
           'INSERT INTO profile_metadata (id, profile_id, label, real_name, created_at) VALUES (1, ?, ?, ?, ?)',
           [id, normalized.label, normalized.realName ?? null, createdAt],

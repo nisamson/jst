@@ -19,14 +19,15 @@ profile's claims, not across unrelated profiles. The app will digitize
 Washington Employment Security Department (ESD) job-search log information
 and organize records for weekly filing. Users file their claims separately:
 the app will not integrate with ESD systems, determine eligibility, or assess
-compliance. Broader application tracking and attachment storage are deferred.
+compliance. Activity evidence links and download-only files are stored locally
+in the profile database; broader application tracking remains deferred.
 
 ESD's [job-search requirements and tracking guidance](https://esd.wa.gov/get-financial-help/unemployment-benefits/weekly-unemployment-claims/job-search-requirements)
 links to the [official job-search log](https://esd.wa.gov/media/pdf/1045/esd-job-search-log-251110-accessiblepdf).
 The log covers employer contacts, WorkSource activities, and other activities,
 with some information specific to each type. It also asks what documentation
-exists for certain activities; deferring attachments does not remove a user's
-responsibility to retain supporting evidence when needed. ESD guidance can
+exists for certain activities; recording attachments does not establish their
+sufficiency or remove a user's responsibility to retain evidence. ESD guidance can
 change and remains the authoritative source.
 
 ## Proposed architecture
@@ -108,11 +109,14 @@ or unsupported metadata; those files are never presented as usable profiles.
 
 Each database stores one row in `profile_metadata` for its stable ID, required
 label, optional real name, and creation timestamp. `PRAGMA user_version`
-identifies schema version 3. New profile schema and metadata are initialized
+identifies schema version 6. New profile schema and metadata are initialized
 in a SQLite transaction. Existing non-empty databases and IDs are rejected,
 not reset or overwritten. Opening a version 1 profile migrates it in a
 transaction by adding the claims table; opening a version 2 profile adds the
-simulated setup-state table. Discovery can still list older profiles before
+simulated setup-state table. Versions 4, 5, and 6 add activities, claim overview
+text, and activity evidence tables with local file blobs, respectively.
+Only writable profiles migrate; older read-only profiles remain viewable.
+Discovery can still list older profiles before
 they are opened. A failed/incomplete database remains unlisted and is reported in
 the listing errors so callers can surface the problem; other valid profiles
 remain discoverable. No SSN field is stored. The profile open operation

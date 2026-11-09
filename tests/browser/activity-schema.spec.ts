@@ -17,6 +17,8 @@ for (const version of [1, 2, 3]) {
       const profile = await storage.createProfile({ label: `Legacy v${legacyVersion}`, realName: 'Example log name' })
       const session = await storage.openProfile(profile.id)
       try {
+        await session.execute('DROP TABLE activity_files')
+        await session.execute('DROP TABLE activity_links')
         await session.execute('DROP TABLE activities')
         if (legacyVersion >= 2) {
           await session.execute('ALTER TABLE claims DROP COLUMN overview')
@@ -88,7 +90,7 @@ for (const version of [1, 2, 3]) {
       created_at: result.profile.createdAt,
     }])
     expect(result.metadata).toEqual(result.profile)
-    expect(result.version).toEqual([{ user_version: 5 }])
+    expect(result.version).toEqual([{ user_version: 6 }])
     expect(result.foreignKeys).toEqual([{ foreign_keys: 1 }])
     expect(result.activities).toEqual([])
     expect(result.index).toEqual([{ name: 'activities_claim_date' }])
@@ -106,6 +108,8 @@ test('reads an unprotected version-three profile without migrating or allowing w
     const storage: typeof import('../../src/storage/profiles') = await import(path)
     const profile = await storage.createProfile({ label: 'Old read-only profile' })
     const session = await storage.openProfile(profile.id)
+    await session.execute('DROP TABLE activity_files')
+    await session.execute('DROP TABLE activity_links')
     await session.execute('DROP TABLE activities')
     await session.execute('ALTER TABLE claims DROP COLUMN overview')
     await session.execute('PRAGMA user_version = 3')
@@ -139,6 +143,8 @@ test('reads version-four claims without migration and preserves their records wh
     const profile = await storage.createProfile({ label: 'Version four overview migration' })
     const session = await storage.openProfile(profile.id)
     try {
+      await session.execute('DROP TABLE activity_files')
+      await session.execute('DROP TABLE activity_links')
       await session.execute('ALTER TABLE claims DROP COLUMN overview')
       await session.execute("INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES ('keep', 'Keep claim', '2026-01-01T00:00:00.000Z', '2025-12-01')")
       await session.execute(`
@@ -187,7 +193,7 @@ test('reads version-four claims without migration and preserves their records wh
     id: 'keep', identifier: 'Keep claim', created_at: '2026-01-01T00:00:00.000Z', claim_start_date: '2025-12-01', overview: null,
   }])
   expect(result.activities).toEqual([{ id: 'activity', claim_id: 'keep', activity_description: 'Keep activity' }])
-  expect(result.version).toEqual([{ user_version: 5 }])
+  expect(result.version).toEqual([{ user_version: 6 }])
   expect(result.profile.label).toBe('Version four overview migration')
   await page.goto(`/claims?profile=${result.profileId}&claim=keep`)
   await expect(page.getByRole('region', { name: 'Keep claim overview', exact: true })).toContainText('No overview provided.')
@@ -247,6 +253,6 @@ test('new schema enforces activity ownership, enums, conditional fields, and non
     }
   })
   expect(result.accepted).toEqual([0, 1, 2])
-  expect(result.version).toEqual([{ user_version: 5 }])
+  expect(result.version).toEqual([{ user_version: 6 }])
   expect(result.foreignKeys).toEqual([{ foreign_keys: 1 }])
 })
