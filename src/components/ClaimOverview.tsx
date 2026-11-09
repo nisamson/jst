@@ -1,7 +1,15 @@
-import { Paper, Stack, Text, Title } from '@mantine/core'
+import { Button, Paper, Stack, Text, Title } from '@mantine/core'
 import type { Claim } from '../storage/claims'
 
-export default function ClaimOverview({ claim }: { claim?: Claim }) {
+export default function ClaimOverview({
+  claim,
+  canDelete = true,
+  onDelete,
+}: {
+  claim?: Claim
+  canDelete?: boolean
+  onDelete?: () => void
+}) {
   if (!claim) {
     return (
       <Paper component="section" aria-labelledby="empty-claims-heading" withBorder p="lg" radius="md">
@@ -28,6 +36,17 @@ export default function ClaimOverview({ claim }: { claim?: Claim }) {
             ? <time dateTime={claim.claimStartDate}>{claim.claimStartDate}</time>
             : 'Not provided'}
         </Text>
+        {onDelete && (
+          <Button
+            color="red"
+            variant="light"
+            disabled={!canDelete}
+            title={canDelete ? undefined : 'This profile is read-only.'}
+            onClick={onDelete}
+          >
+            Delete claim
+          </Button>
+        )}
       </Stack>
     </Paper>
   )

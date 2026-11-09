@@ -39,7 +39,7 @@ test('opens the selected profile claims overview and switches profiles', async (
   expect(profiles.first.id).not.toBe(profiles.second.id)
 })
 
-test('deletes only the selected profile immediately and preserves other profile records after reload', async ({ page }) => {
+test('requires the exact profile label before deletion and preserves other profiles after reload', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
@@ -73,16 +73,46 @@ test('deletes only the selected profile immediately and preserves other profile 
     }
   })
 
+  const deletedProfileId = await page.evaluate(async () => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    return (await profiles.listProfiles()).profiles.find((item) => item.label === 'Profile to delete')?.id
+  })
+  expect(deletedProfileId).toBeDefined()
+
   await page.getByRole('button', { name: 'Delete Profile to delete' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete profile?' })
+  const nameInput = dialog.getByRole('textbox', { name: 'Type profile name to confirm' })
+  const confirmButton = dialog.getByRole('button', { name: 'Delete profile' })
+  await expect(confirmButton).toBeDisabled()
+  await nameInput.fill('wrong label')
+  await expect(confirmButton).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Profile to delete profile' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delete Profile to delete' }).click()
+  const confirmDialog = page.getByRole('dialog', { name: 'Delete profile?' })
+  const confirmInput = confirmDialog.getByRole('textbox', { name: 'Type profile name to confirm' })
+  const confirmDelete = confirmDialog.getByRole('button', { name: 'Delete profile' })
+  await expect(confirmDelete).toBeDisabled()
+  await confirmInput.fill('Profile to delete!')
+  await expect(confirmDelete).toBeDisabled()
+  await confirmInput.fill('Profile to delete')
+  await confirmDelete.click()
   await expect(page.getByRole('button', { name: 'Profile to delete profile' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Profile to keep profile' })).toBeVisible()
-  await expect(page.getByRole('alert', { name: 'Profile could not be deleted' })).toHaveCount(0)
 
   await page.reload()
   await expect(page.getByRole('button', { name: 'Profile to delete profile' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Profile to keep profile' })).toBeVisible()
   await page.getByRole('button', { name: 'Profile to keep profile' }).click()
   await expect(page.getByRole('button', { name: 'Preserved claim' })).toBeVisible()
+
+  await page.goto(`/claims?profile=${deletedProfileId}`)
+  await expect(page.getByRole('alert')).toContainText('This profile could not be opened')
+  await page.getByRole('button', { name: 'Return to profiles' }).click()
+  await expect(page.getByRole('button', { name: 'Profile to keep profile' })).toBeVisible()
 })
 
 test('reports discovery failure and recovers when profile discovery is retried', async ({ page }) => {
