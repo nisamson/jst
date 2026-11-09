@@ -7,6 +7,7 @@ import ClaimSidebar from './ClaimSidebar'
 import ConfirmDeletionDialog from './ConfirmDeletionDialog'
 import ClaimFormDialog from './ClaimFormDialog'
 import ClaimActivities from './ClaimActivities'
+import { claimSelectionLabel } from './record-labels'
 
 export default function ClaimsWorkspace({
   profile,
@@ -74,7 +75,7 @@ export default function ClaimsWorkspace({
         </Alert>
       )}
       <VisuallyHidden aria-live="polite" aria-atomic="true">
-        {selectedClaim ? `Selected claim: ${selectedClaim.identifier}, record ${selectedClaim.id}` : ''}
+        {selectedClaim ? `Selected claim: ${claimSelectionLabel(selectedClaim, claims)}` : ''}
       </VisuallyHidden>
       <Grid gap="lg" align="flex-start">
         {claims.length > 0 && (
@@ -132,6 +133,7 @@ export default function ClaimsWorkspace({
         <ConfirmDeletionDialog
           itemType="claim"
           name={claimToDelete.identifier}
+          description={`${claimSelectionLabel(claimToDelete, claims)}. Start date: ${claimToDelete.claimStartDate ?? 'Not provided'}. Created: ${new Date(claimToDelete.createdAt).toLocaleString()}`}
           recordId={claimToDelete.id}
           onClose={() => setClaimToDelete(undefined)}
           onConfirm={() => removeClaim(claimToDelete)}

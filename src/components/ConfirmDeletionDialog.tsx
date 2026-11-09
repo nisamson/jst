@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
+import RecordTechnicalDetails from './RecordTechnicalDetails'
 
 interface ConfirmDeletionDialogProps {
   itemType: 'profile' | 'claim'
   name: string
   recordId?: string
+  description?: string
   onClose: () => void
   onConfirm: () => Promise<void>
 }
@@ -13,6 +15,7 @@ export default function ConfirmDeletionDialog({
   itemType,
   name,
   recordId,
+  description,
   onClose,
   onConfirm,
 }: ConfirmDeletionDialogProps) {
@@ -48,7 +51,8 @@ export default function ConfirmDeletionDialog({
           This permanently deletes {itemType === 'profile' ? 'the profile, all its claims, and all their activities' : 'this claim and all its associated activities'}.
           Type <strong>{name}</strong> to confirm.
         </Text>
-        {recordId && <Text size="sm" style={{ overflowWrap: 'anywhere' }}>Record ID: {recordId}</Text>}
+        {description && <Text size="sm" style={{ overflowWrap: 'anywhere' }}>{description}</Text>}
+        {recordId && <RecordTechnicalDetails key={recordId} recordId={recordId} />}
         <TextInput
           label={`Type ${itemType} name to confirm`}
           value={enteredName}

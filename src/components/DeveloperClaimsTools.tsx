@@ -34,7 +34,10 @@ export default function DeveloperClaimsTools({
         <Text size="sm">
           Add four persistent dummy records to this profile, including duplicate identifiers,
           missing start dates, and a long identifier. Adding again does not duplicate them.
-          Remove deletes only these tool-owned records, without confirmation.
+          Three claims include example activities of all three kinds, across several weeks
+          with empty gaps; the long-name claim starts empty. Existing fixture edits are preserved.
+          Remove deletes these tool-owned claims and all their activities, without confirmation,
+          including activities you added to those claims. Other claims are left unchanged.
         </Text>
         {readOnly && (
           <Text size="sm" c="dimmed">

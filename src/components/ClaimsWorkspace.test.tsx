@@ -28,9 +28,10 @@ function renderWorkspace(overrides: Partial<ComponentProps<typeof ClaimsWorkspac
 it('distinguishes duplicate identifiers and selects an explicit stable ID instead of the newest record', () => {
   const html = renderWorkspace({ claimId: 'older' })
 
-  expect(html).toMatch(/aria-label="Same label, record newest"[^>]*aria-pressed="false"/)
-  expect(html).toMatch(/aria-label="Same label, record older"[^>]*aria-pressed="true"/)
-  expect(html).toContain('Selected claim: Same label, record older')
+  expect(html).toMatch(/aria-label="Same label, Entry 1"[^>]*aria-pressed="false"/)
+  expect(html).toMatch(/aria-label="Same label, Entry 2"[^>]*aria-pressed="true"/)
+  expect(html).toContain('Selected claim: Same label, Entry 2')
+  expect(html).not.toContain('Selected claim: Same label, record')
   expect(html).toMatch(/id="claim-overview-heading"[^>]*>Same label overview<\/h2>/)
   expect(html).toContain('2025-03-01T12:00:00.000Z')
 })
@@ -59,7 +60,7 @@ it('keeps the newest claim viewable but disables deletion in read-only mode', ()
     access: { mode: 'read-only', persistence: 'denied', syncConnected: false },
   })
 
-  expect(html).toContain('Selected claim: Same label, record newest')
+  expect(html).toContain('Selected claim: Same label, Entry 1')
   expect(html).toContain('profile-content changes are blocked.')
   expect(html).toMatch(/<button[^>]*disabled[^>]*title="This profile is read-only."/)
 })

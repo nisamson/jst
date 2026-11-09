@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core'
+import { Alert, Badge, Box, Button, Grid, Group, Loader, Paper, Stack, Text, Title, VisuallyHidden } from '@mantine/core'
 import { deleteProfileActivity, loadProfileActivities, saveProfileActivity } from '../storage/activities'
-import { activityKinds, activityTitle } from '../storage/activity-model'
+import { localCalendarDate } from '../storage/activity-model'
 import type { Activity, ActivityInput } from '../storage/activity-model'
+import { activityWeekStart, groupActivitiesByWeek, weekDisplayLabel, weekInputDate, weekRangeLabel } from '../storage/activity-weeks'
+import ActivityList from './ActivityList'
 import ActivityDetails from './ActivityDetails'
 import ActivityFormDialog from './ActivityFormDialog'
+import ActivityWeekControls from './ActivityWeekControls'
+import ActivityWeekNavigator from './ActivityWeekNavigator'
 import DeleteActivityDialog from './DeleteActivityDialog'
+import { activitySelectionLabel } from './record-labels'
 
 type State = { state: 'loading' } | { state: 'error'; message: string }
   | { state: 'loaded'; activities: Activity[]; readOnly: boolean }
@@ -24,6 +29,7 @@ export default function ClaimActivities(props: Props) {
 
 function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & { onReload: () => void }) {
   const [state, setState] = useState<State>({ state: 'loading' })
+  const [selectedWeek, setSelectedWeek] = useState<number>()
   const [selectedId, setSelectedId] = useState<string>()
   const [editing, setEditing] = useState<{ activity?: Activity }>()
   const [deleting, setDeleting] = useState<Activity>()
@@ -37,8 +43,16 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
     return () => { cancelled = true }
   }, [profileId, claimId])
   const activities = state.state === 'loaded' ? state.activities : []
-  const selected = activities.find((item) => item.id === selectedId)
+  const weeks = groupActivitiesByWeek(activities)
+  const week = selectedWeek ?? weeks.newest ?? activityWeekStart(localCalendarDate())
+  const weekActivities = weeks.groups.get(week) ?? []
+  const selected = weekActivities.find((item) => item.id === selectedId)
   const cannotWrite = readOnly || state.state !== 'loaded' || state.readOnly
+
+  function selectWeek(nextWeek: number) {
+    setSelectedWeek(nextWeek)
+    if (nextWeek !== week) setSelectedId(undefined)
+  }
 
   async function save(input: ActivityInput) {
     const saved = await saveProfileActivity(profileId, claimId, input, editing?.activity?.id)
@@ -50,6 +64,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
             || right.created_at.localeCompare(left.created_at) || left.id.localeCompare(right.id)),
       } : current)
     setSelectedId(saved.id)
+    setSelectedWeek(activityWeekStart(saved.activity_date))
     setEditing(undefined)
   }
   async function remove(activity: Activity) {
@@ -58,6 +73,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
       ? { ...current, activities: current.activities.filter((item) => item.id !== activity.id) } : current)
     setDeleting(undefined)
     setSelectedId(undefined)
+    setSelectedWeek(week)
   }
   return (
     <Paper component="section" aria-labelledby="claim-activities-heading" withBorder p="md" radius="md">
@@ -65,11 +81,18 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
         <Group justify="space-between">
           <Title id="claim-activities-heading" order={2}>Job-search activities</Title>
           <Group>
-            <Button variant="default" disabled={state.state === 'loading'} onClick={onReload}>Reload activities</Button>
+            <Button variant="subtle" size="compact-sm" disabled={state.state === 'loading'} onClick={onReload}>Reload activities</Button>
             <Button disabled={cannotWrite} onClick={() => setEditing({})}>Add activity</Button>
           </Group>
         </Group>
-        <Text size="sm" c="dimmed">Activities in this claim only, newest activity date first. This log does not determine ESD eligibility or file a claim.</Text>
+        <Box component="details">
+          <Text component="summary" size="sm" c="dimmed" style={{ cursor: 'pointer' }}>Help</Text>
+          <Text size="sm" c="dimmed" mt="xs">
+            Activities belong to this claim and are grouped Sunday through Saturday by activity date.
+            The week overview includes gaps between the earliest and latest recorded activity.
+            These are activity records, not filing status. This log does not determine ESD eligibility or file a claim.
+          </Text>
+        </Box>
         {state.state === 'loading' && <Group><Loader size="sm" /><Text component="output">Loading activities...</Text></Group>}
         {state.state === 'error' && (
           <Alert title="Activities could not be loaded" color="red">
@@ -81,31 +104,39 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
         {state.state === 'loaded' && (
           <>
             {cannotWrite && <Text size="sm">Activities are read-only for this profile.</Text>}
-            {activities.length === 0 ? <Text>No activities yet. {cannotWrite ? 'Write access is required to add one.' : 'Add an activity to start your log.'}</Text> : (
-              <Stack component="ul" gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
-                {activities.map((activity) => (
-                  <li key={activity.id}>
-                    <Button fullWidth h="auto" py="sm" variant={activity.id === selectedId ? 'filled' : 'light'}
-                      aria-pressed={activity.id === selectedId}
-                      aria-label={`${activityTitle(activity)}, ${activity.activity_date}, record ${activity.id}`}
-                      styles={{ label: { whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0, textAlign: 'left' } }}
-                      onClick={() => setSelectedId(activity.id)}>
-                      <Stack component="span" gap={4}>
-                        <Text component="span" fw={600}>{activityTitle(activity)}</Text>
-                        <Text component="span" size="sm">{activity.activity_date} - {activityKinds.find((item) => item.value === activity.kind)?.label}</Text>
-                        <Text component="span" size="xs">Record ID: {activity.id}</Text>
-                      </Stack>
-                    </Button>
-                  </li>
-                ))}
-              </Stack>
-            )}
-            {selected && <ActivityDetails activity={selected} readOnly={cannotWrite}
-              onEdit={() => setEditing({ activity: selected })} onDelete={() => setDeleting(selected)} />}
+            {activities.length === 0 && <Text>No activities yet. {cannotWrite ? 'Write access is required to add one.' : 'Add an activity to start your log.'}</Text>}
+            {activities.length > 0 && <Grid gap="md" align="flex-start">
+              <Grid.Col span={{ base: 12, lg: 4 }}>
+                <ActivityWeekNavigator weeks={weeks} selectedWeek={week} onSelect={selectWeek} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, lg: 8 }}>
+                <Stack component="section" aria-label="Selected activity week" gap="md">
+                  <ActivityWeekControls week={week} onSelect={selectWeek}>
+                    <Group gap="xs">
+                      <Title order={3} aria-label={`Week: ${weekRangeLabel(week)}`}>{weekDisplayLabel(week)}</Title>
+                      <Badge variant="light" color="gray">{weekActivities.length} {weekActivities.length === 1 ? 'activity' : 'activities'}</Badge>
+                    </Group>
+                  </ActivityWeekControls>
+                  <VisuallyHidden component="output" aria-live="polite" aria-atomic="true">
+                    {weekRangeLabel(week)}: {weekActivities.length} {weekActivities.length === 1 ? 'activity' : 'activities'}
+                  </VisuallyHidden>
+                  {weeks.newest !== undefined && weeks.oldest !== undefined && (week > weeks.newest || week < weeks.oldest)
+                    && <Text size="sm">This week is outside the recorded activity range. The overview still shows your existing history.</Text>}
+                  {weekActivities.length === 0 ? <Text>No activities recorded for this week.</Text> : (
+                    <ActivityList activities={weekActivities} selectedId={selectedId} onSelect={setSelectedId} />
+                  )}
+                  {selected && <ActivityDetails activity={selected} readOnly={cannotWrite}
+                    onEdit={() => setEditing({ activity: selected })} onDelete={() => setDeleting(selected)} />}
+                </Stack>
+              </Grid.Col>
+            </Grid>}
           </>
         )}
-        {editing && <ActivityFormDialog activity={editing.activity} readOnly={cannotWrite} onSave={save} onClose={() => setEditing(undefined)} />}
-        {deleting && <DeleteActivityDialog activity={deleting} onConfirm={() => remove(deleting)} onClose={() => setDeleting(undefined)} />}
+        {editing && <ActivityFormDialog activity={editing.activity}
+          initialDate={activities.length === 0 || activityWeekStart(localCalendarDate()) === week ? localCalendarDate() : weekInputDate(week)}
+          readOnly={cannotWrite} onSave={save} onClose={() => setEditing(undefined)} />}
+        {deleting && <DeleteActivityDialog activity={deleting} selectionLabel={activitySelectionLabel(deleting, activities)}
+          onConfirm={() => remove(deleting)} onClose={() => setDeleting(undefined)} />}
       </Stack>
     </Paper>
   )

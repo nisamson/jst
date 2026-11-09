@@ -4,8 +4,9 @@
 
 This is the reviewed design for #18. The version 4 activities schema and
 transactional migration are implemented by #39 alongside claim lifecycle work.
-Claim-scoped activity CRUD and entry UI are implemented by #30. Weekly grouping,
-search, attachments, and ESD integration remain separate work.
+Claim-scoped activity CRUD and entry UI are implemented by #30, and the derived
+weekly overview/selected-week view by #31. Search, attachments, and ESD integration
+remain separate work.
 
 The app records information for the user's own log. It does not determine
 eligibility, approve activities, assess compliance, or file anything with ESD.
@@ -45,6 +46,12 @@ records, this means Sunday through Saturday inclusive, including all of
 Saturday's final minute. Derive the week-ending Saturday from the activity
 date. Do not store an independently editable week-ending value or introduce
 a weekly-log entity.
+
+The weekly UI combines a paged overview of that claim's complete recorded date
+range (including empty gaps) with a selected-week activity view. Empty weeks
+are derived, never persisted, and do not indicate whether a claim was filed.
+See the [weekly view decisions](user-stories/claim-management.md#weekly-activity-view-decisions-31-4648)
+for navigation and selection behavior.
 
 The log name comes from the profile's optional real name. Do not substitute
 the profile label or duplicate the name on activities. Leave the form's
