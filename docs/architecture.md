@@ -210,8 +210,11 @@ Production hosts need an SPA fallback for the diagnostics URL.
 
 - **Activity records:** Store common information plus activity-specific
   details. Automatically group activities by their dates into weekly views;
-  users can correct dates and details. The precise fields and validation
-  behavior remain open.
+  users can correct dates and details. The reviewed
+  [job-search activity model](job-search-data-model.md) defines the three
+  kinds, shared and kind-specific fields, Sunday-through-Saturday grouping,
+  validation, warnings, and future SQLite migration requirements. This model
+  is documented, not yet implemented.
 - **Onboarding:** List existing local profiles or guide the user through
   creating a named profile with an optional real name and optional cloud
   setup, then open its claims overview (which may be empty). Initial setup
@@ -253,15 +256,15 @@ Production hosts need an SPA fallback for the diagnostics URL.
   for now. Minimize requested provider permissions and account for the
   exposure of downloaded and printed exports.
 - The official log asks for a name and ID or SSN. The app must never persist
-  an SSN. A future print/PDF export may allow the user to provide one for
-  that export without saving it in app storage; an export the user chooses
-  to save or print may itself contain that information. Other identifying
-  information, if any, remains a product and privacy decision.
+  an SSN. The reviewed model uses the profile's optional real name and leaves
+  ID/SSN blank; no new claimant identifier field is introduced.
 
 ## Open decisions
 
-- Exact ESD log fields, activity types, week boundaries, validation, and
-  whether incomplete records can be saved.
+- Activity-entry and warning presentation, printed pagination, and future
+  attachment modeling. Fields, kinds, week boundaries, validation, and the
+  no-draft save boundary are defined in the
+  [job-search activity model](job-search-data-model.md).
 - Profile schema/versioning and discovery, PWA tooling, and verified support
   across additional browsers and mobile platforms.
 - Provider authorization and permissions, provider-specific file locations,
