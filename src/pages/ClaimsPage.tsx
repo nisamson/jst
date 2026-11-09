@@ -3,10 +3,11 @@ import { Alert, Anchor, Breadcrumbs, Button, Container, Grid, Group, Loader, Sta
 import { openProfile } from '../storage/profiles'
 import type { Profile } from '../storage/profiles'
 import type { Persistence } from '../storage/environment'
-import { listClaims } from '../storage/claims'
+import { deleteProfileClaim, listClaims } from '../storage/claims'
 import type { Claim } from '../storage/claims'
 import ClaimOverview from '../components/ClaimOverview'
 import ClaimSidebar from '../components/ClaimSidebar'
+import ConfirmDeletionDialog from '../components/ConfirmDeletionDialog'
 
 type ProfileState =
   | { state: 'loading' }
@@ -66,6 +67,7 @@ function ClaimsOverview({
   onNavigate: (path: string) => void
 }) {
   const [profileState, setProfileState] = useState<ProfileState>({ state: 'loading' })
+  const [claimToDelete, setClaimToDelete] = useState<Claim>()
 
   useEffect(() => {
     let cancelled = false
@@ -127,6 +129,15 @@ function ClaimsOverview({
     onNavigate(`/claims?profile=${encodeURIComponent(profileId)}&claim=${encodeURIComponent(claim.id)}`)
   }
 
+  async function removeClaim(claim: Claim) {
+    await deleteProfileClaim(profileId, claim.id)
+    setProfileState((current) => current.state === 'loaded'
+      ? { ...current, claims: current.claims.filter((item) => item.id !== claim.id) }
+      : current)
+    setClaimToDelete(undefined)
+    onNavigate(`/claims?profile=${encodeURIComponent(profileId)}`)
+  }
+
   const selectedClaimId = profileState.state === 'loaded'
     ? claimId ?? profileState.claims[0]?.id
     : claimId
@@ -149,6 +160,9 @@ function ClaimsOverview({
               >
                 Profiles
               </Anchor>
+              {profileState.state === 'loaded' && (
+                <Text component="span">{profileState.profile.label}</Text>
+              )}
               <Text aria-current="page">Claims</Text>
             </Breadcrumbs>
           </nav>
@@ -195,7 +209,12 @@ function ClaimsOverview({
             )}
             {claimId && !selectedClaim && (
               <Alert color="yellow" title="The selected claim is unavailable">
-                Choose an available claim from this profile. No other profile's claims are shown.
+                <Stack gap="sm">
+                  <Text>Choose an available claim from this profile. No other profile's claims are shown.</Text>
+                  <Button variant="light" onClick={() => onNavigate(`/claims?profile=${encodeURIComponent(profileId)}`)}>
+                    Return to claims overview
+                  </Button>
+                </Stack>
               </Alert>
             )}
             <Grid>
@@ -207,12 +226,24 @@ function ClaimsOverview({
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, sm: 8 }}>
-                <ClaimOverview claim={selectedClaim} />
+                <ClaimOverview
+                  claim={selectedClaim}
+                  canDelete={profileState.access.mode === 'read-write'}
+                  onDelete={selectedClaim ? () => setClaimToDelete(selectedClaim) : undefined}
+                />
               </Grid.Col>
             </Grid>
           </>
         )}
       </Stack>
+      {claimToDelete && (
+        <ConfirmDeletionDialog
+          itemType="claim"
+          name={claimToDelete.identifier}
+          onClose={() => setClaimToDelete(undefined)}
+          onConfirm={() => removeClaim(claimToDelete)}
+        />
+      )}
     </Container>
   )
 }

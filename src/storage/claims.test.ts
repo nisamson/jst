@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import type { SqlValue } from '@sqlite.org/sqlite-wasm'
-import { listClaims } from './claims'
+import { deleteClaim, listClaims } from './claims'
 import type { StorageSession } from './local-storage'
 import type { SqlRow } from './protocol'
 
@@ -67,4 +67,20 @@ it('treats a version-one profile without a claims table as an empty overview', a
   expect(execute).not.toHaveBeenCalledWith(
     'SELECT id, identifier, created_at, claim_start_date FROM claims ORDER BY created_at DESC, id',
   )
+})
+
+it('deletes a claim by stable ID and reports when it no longer exists', async () => {
+  const execute: StorageSession['execute'] = vi.fn(async (sql) => {
+    if (sql === 'SELECT changes() AS changes') return [row({ changes: 1 })]
+    return []
+  })
+
+  await deleteClaim(execute, 'stable-claim-id')
+
+  expect(execute).toHaveBeenNthCalledWith(1, 'DELETE FROM claims WHERE id = ?', ['stable-claim-id'])
+  expect(execute).toHaveBeenNthCalledWith(2, 'SELECT changes() AS changes')
+
+  const missingClaim: StorageSession['execute'] = vi.fn(async () => [row({ changes: 0 })])
+  await expect(deleteClaim(missingClaim, 'already-deleted')).rejects.toThrow(/no longer exists/i)
+  await expect(deleteClaim(execute, '  ')).rejects.toThrow(/invalid/i)
 })

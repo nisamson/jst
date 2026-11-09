@@ -52,7 +52,10 @@ test('opens an empty profile-scoped overview, survives reload, and switches prof
   await page.getByRole('button', { name: 'First profile profile' }).click()
   await expect(page).toHaveURL(/\/claims\?profile=[0-9a-f-]+$/)
   await expect(page.getByRole('heading', { name: 'Claims overview' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' })).toBeVisible()
+  const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(breadcrumb.getByRole('link', { name: 'Profiles' })).toBeVisible()
+  await expect(breadcrumb).toContainText('First profile')
+  await expect(breadcrumb).toContainText('Claims')
   await expect(page.getByText('Profile: First profile')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
   await expect(page.getByRole('button', { name: /create claim/i })).toHaveCount(0)
@@ -65,6 +68,7 @@ test('opens an empty profile-scoped overview, survives reload, and switches prof
   await expect(page).toHaveURL(/\/claims\?profile=[0-9a-f-]+$/)
   await expect(page.getByText('Profile: Second profile')).toBeVisible()
   await expect(page.getByText('Profile: First profile')).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Second profile')
 })
 
 test('upgrades an existing version-one profile without losing its metadata', async ({ page }, testInfo) => {
@@ -152,6 +156,143 @@ test('lists persistent claims, selects their metadata, and isolates them by prof
   await expect(page.getByRole('button', { name: 'Claim 2025' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Claim 2026' })).toHaveCount(0)
   await expect(page.getByText('Profile: Claims two')).toBeVisible()
+})
+
+test('requires the exact claim identifier and clears its route after deletion', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Delete claim profile')
+  const profileId = await seedProfileClaims(page, 'Delete claim profile')
+  await page.getByRole('button', { name: 'Delete claim profile profile', exact: true }).click()
+  await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
+  const firstDialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  const firstInput = firstDialog.getByRole('textbox', { name: 'Type claim name to confirm' })
+  const firstConfirm = firstDialog.getByRole('button', { name: 'Delete claim' })
+  await expect(firstConfirm).toBeDisabled()
+  await firstInput.fill('claim 2026')
+  await expect(firstConfirm).toBeDisabled()
+  await firstDialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
+  await dialog.getByRole('button', { name: 'Delete claim' }).click()
+  await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profileId}$`))
+  await expect(page.getByRole('button', { name: 'Claim 2026' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Claim 2025' })).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Claim 2026' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Claim 2025' })).toBeVisible()
+
+  await page.goto(`/claims?profile=${profileId}&claim=claim-newer`)
+  await expect(page.getByRole('alert')).toContainText('The selected claim is unavailable')
+  await page.getByRole('button', { name: 'Return to claims overview' }).click()
+  await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profileId}$`))
+  await expect(page.getByRole('button', { name: 'Claim 2025' })).toBeVisible()
+})
+
+test('deletes only the selected claim when identifiers are duplicated', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Duplicate claim labels')
+  const profileId = await seedProfileClaims(page, 'Duplicate claim labels')
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await profiles.openProfile(id)
+    try {
+      await session.execute(
+        'INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES (?, ?, ?, ?)',
+        ['duplicate-claim-id', 'Claim 2026', '2026-02-01T11:00:00.000Z', null],
+      )
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await page.goto(`/claims?profile=${profileId}&claim=duplicate-claim-id`)
+  await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
+  await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
+  await dialog.getByRole('button', { name: 'Delete claim' }).click()
+
+  const remainingClaimIds = await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const claimsPath = '/src/storage/claims.ts'
+    const claims: typeof import('../../src/storage/claims') = await import(claimsPath)
+    const session = await profiles.openProfile(id)
+    try {
+      return (await claims.listClaims(session.execute)).map((claim) => claim.id)
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  expect(remainingClaimIds).toEqual(['claim-newer', 'claim-older'])
+})
+
+test('reports claim deletion failure and allows retry without losing the claim', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('production'), 'Production preview does not expose source modules for test fixture seeding.')
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => true })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => true })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
+  await createProfile(page, 'Retry claim deletion')
+  const profileId = await seedProfileClaims(page, 'Retry claim deletion')
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await profiles.openProfile(id)
+    try {
+      await session.execute(`
+        CREATE TRIGGER reject_claim_delete
+        BEFORE DELETE ON claims
+        BEGIN
+          SELECT RAISE(FAIL, 'Claim deletion is temporarily unavailable');
+        END
+      `)
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  await page.getByRole('button', { name: 'Retry claim deletion profile' }).click()
+  await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
+  await dialog.getByRole('button', { name: 'Delete claim' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Claim deletion is temporarily unavailable')
+  await expect(page.getByRole('button', { name: 'Claim 2026' })).toBeVisible()
+
+  await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await profiles.openProfile(id)
+    try {
+      await session.execute('DROP TRIGGER reject_claim_delete')
+    } finally {
+      await session.dispose()
+    }
+  }, profileId)
+  dialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  await dialog.getByRole('button', { name: 'Delete claim' }).click()
+  await expect(page.getByRole('button', { name: 'Claim 2026' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Claim 2025' })).toBeVisible()
 })
 
 test('recovers from a stale claim selection by selecting an available claim', async ({ page }, testInfo) => {

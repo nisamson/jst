@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import CreateProfileForm from '../components/CreateProfileForm'
+import ConfirmDeletionDialog from '../components/ConfirmDeletionDialog'
 import SimulatedSyncDialog from '../components/SimulatedSyncDialog'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
 import type { Profile, ProfileListing } from '../storage/profiles'
@@ -38,8 +39,7 @@ function ProfileDiscovery({
   const [discovery, setDiscovery] = useState<DiscoveryState>({ state: 'loading' })
   const [creatingProfile, setCreatingProfile] = useState(false)
   const [setupFlow, setSetupFlow] = useState<SetupFlow>()
-  const [deletingProfileId, setDeletingProfileId] = useState<string>()
-  const [deletionError, setDeletionError] = useState<string>()
+  const [profileToDelete, setProfileToDelete] = useState<Profile>()
   const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
@@ -84,25 +84,17 @@ function ProfileDiscovery({
   }
 
   async function removeProfile(profile: Profile) {
-    setDeletingProfileId(profile.id)
-    setDeletionError(undefined)
-    try {
-      await deleteProfile(profile.id)
-      setDiscovery((current) => current.state === 'loaded'
-        ? {
-          state: 'loaded',
-          listing: {
-            ...current.listing,
-            profiles: current.listing.profiles.filter((item) => item.id !== profile.id),
-          },
-        }
-        : current)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown storage error.'
-      setDeletionError(`Could not delete ${profile.label}: ${message} Close other JST tabs using this profile and retry.`)
-    } finally {
-      setDeletingProfileId(undefined)
-    }
+    await deleteProfile(profile.id)
+    setDiscovery((current) => current.state === 'loaded'
+      ? {
+        state: 'loaded',
+        listing: {
+          ...current.listing,
+          profiles: current.listing.profiles.filter((item) => item.id !== profile.id),
+        },
+      }
+      : current)
+    setProfileToDelete(undefined)
   }
 
   const listing = discovery.state === 'loaded' ? discovery.listing : undefined
@@ -165,12 +157,6 @@ function ProfileDiscovery({
               </Stack>
             </Alert>
           )}
-          {deletionError && (
-            <Alert color="red" title="Profile could not be deleted" role="alert">
-              {deletionError}
-            </Alert>
-          )}
-
           {listing && listing.profiles.length > 0 && (
             <SimpleGrid component="ul" cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm" p={0} style={{ listStyle: 'none' }}>
               {listing.profiles.map((profile) => (
@@ -191,7 +177,6 @@ function ProfileDiscovery({
                       <Button
                         variant="default"
                         aria-label={`Set up simulated sync for ${profile.label}`}
-                        disabled={deletingProfileId !== undefined}
                         onClick={() => setSetupFlow({ profile, continueToClaims: false })}
                       >
                         Simulated sync
@@ -200,9 +185,7 @@ function ProfileDiscovery({
                         color="red"
                         variant="light"
                         aria-label={`Delete ${profile.label}`}
-                        loading={deletingProfileId === profile.id}
-                        disabled={deletingProfileId !== undefined}
-                        onClick={() => void removeProfile(profile)}
+                        onClick={() => setProfileToDelete(profile)}
                       >
                         Delete
                       </Button>
@@ -250,6 +233,14 @@ function ProfileDiscovery({
           onClose={setupFlow.continueToClaims ? finishSetupFlow : () => setSetupFlow(undefined)}
           onContinueLocally={setupFlow.continueToClaims ? finishSetupFlow : undefined}
           onSetupComplete={setupFlow.continueToClaims ? finishSetupFlow : undefined}
+        />
+      )}
+      {profileToDelete && (
+        <ConfirmDeletionDialog
+          itemType="profile"
+          name={profileToDelete.label}
+          onClose={() => setProfileToDelete(undefined)}
+          onConfirm={() => removeProfile(profileToDelete)}
         />
       )}
     </Container>
