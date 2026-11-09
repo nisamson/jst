@@ -3,13 +3,14 @@ import { activityKinds, activityTitle } from '../storage/activity-model'
 import type { Activity } from '../storage/activity-model'
 import { activitySelectionLabel } from './record-labels'
 
-export default function ActivityList({ activities, selectedId, onSelect }: {
+export default function ActivityList({ activities, selectedId, onSelect, label = 'Activities in selected week' }: {
   activities: Activity[]
   selectedId?: string
   onSelect: (id: string) => void
+  label?: string
 }) {
   return (
-    <Stack component="ul" aria-label="Activities in selected week" gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
+    <Stack component="ul" aria-label={label} gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
       {activities.map((activity) => (
         <li key={activity.id}>
           <Button fullWidth h="auto" py="sm" justify="flex-start" variant={activity.id === selectedId ? 'filled' : 'light'}

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Alert, Badge, Box, Button, Grid, Group, Loader, Paper, Stack, Text, Title, VisuallyHidden } from '@mantine/core'
+import { Alert, Badge, Box, Button, Grid, Group, Loader, Paper, Select, Stack, Text, TextInput, Title, VisuallyHidden } from '@mantine/core'
 import { deleteProfileActivity, loadProfileActivities, saveProfileActivity } from '../storage/activities'
-import { localCalendarDate } from '../storage/activity-model'
-import type { Activity, ActivityInput } from '../storage/activity-model'
+import { activityKinds, localCalendarDate } from '../storage/activity-model'
+import type { Activity, ActivityInput, ActivityKind } from '../storage/activity-model'
+import { searchActivities } from '../storage/activity-search'
+import type { ActivitySearchResult } from '../storage/activity-search'
 import { activityWeekStart, groupActivitiesByWeek, weekDisplayLabel, weekInputDate, weekRangeLabel } from '../storage/activity-weeks'
 import ActivityList from './ActivityList'
 import ActivityDetails from './ActivityDetails'
@@ -31,6 +33,10 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
   const [state, setState] = useState<State>({ state: 'loading' })
   const [selectedWeek, setSelectedWeek] = useState<number>()
   const [selectedId, setSelectedId] = useState<string>()
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchKind, setSearchKind] = useState<'all' | ActivityKind>('all')
+  const [searchSelectedId, setSearchSelectedId] = useState<string>()
   const [editing, setEditing] = useState<{ activity?: Activity }>()
   const [deleting, setDeleting] = useState<Activity>()
   useEffect(() => {
@@ -47,6 +53,16 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
   const week = selectedWeek ?? weeks.newest ?? activityWeekStart(localCalendarDate())
   const weekActivities = weeks.groups.get(week) ?? []
   const selected = weekActivities.find((item) => item.id === selectedId)
+  const searchResults = searchActivities(activities, searchQuery, searchKind === 'all' ? undefined : searchKind)
+  const searchGroups = new Map<number, ActivitySearchResult[]>()
+  for (const result of searchResults) {
+    const resultWeek = activityWeekStart(result.activity.activity_date)
+    const group = searchGroups.get(resultWeek)
+    if (group) group.push(result)
+    else searchGroups.set(resultWeek, [result])
+  }
+  const searchSelected = searchResults.find((result) => result.activity.id === searchSelectedId)?.activity
+  const searchActive = searchQuery.trim().length > 0 || searchKind !== 'all'
   const cannotWrite = readOnly || state.state !== 'loaded' || state.readOnly
 
   function selectWeek(nextWeek: number) {
@@ -73,7 +89,13 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
       ? { ...current, activities: current.activities.filter((item) => item.id !== activity.id) } : current)
     setDeleting(undefined)
     setSelectedId(undefined)
+    setSearchSelectedId(undefined)
     setSelectedWeek(week)
+  }
+  function clearSearch() {
+    setSearchQuery('')
+    setSearchKind('all')
+    setSearchSelectedId(undefined)
   }
   return (
     <Paper component="section" aria-labelledby="claim-activities-heading" withBorder p="md" radius="md">
@@ -105,6 +127,63 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
           <>
             {cannotWrite && <Text size="sm">Activities are read-only for this profile.</Text>}
             {activities.length === 0 && <Text>No activities yet. {cannotWrite ? 'Write access is required to add one.' : 'Add an activity to start your log.'}</Text>}
+            {activities.length > 0 && (
+              <Box component="details" data-search-disclosure open={searchExpanded}
+                onToggle={(event) => setSearchExpanded(event.currentTarget.open)}>
+                <Text component="summary" size="sm" fw={500} style={{ cursor: 'pointer' }}>
+                  <Group component="span" gap="xs" style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+                    <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24"
+                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-4-4" />
+                    </svg>
+                    <span>Search within claim</span>
+                  </Group>
+                </Text>
+                <Stack mt="sm" gap="md">
+                  <Group align="flex-end">
+                    <TextInput label="Search activities" value={searchQuery} onChange={(event) => {
+                      setSearchQuery(event.currentTarget.value)
+                      setSearchSelectedId(undefined)
+                    }} />
+                    <Select label="Activity kind" data={[
+                      { value: 'all', label: 'All activity types' },
+                      ...activityKinds,
+                    ]} value={searchKind} onChange={(value) => {
+                      setSearchKind(activityKinds.find((item) => item.value === value)?.value ?? 'all')
+                      setSearchSelectedId(undefined)
+                    }} />
+                    <Button variant="default" disabled={!searchActive} onClick={clearSearch}>Clear search</Button>
+                  </Group>
+                  {searchActive && (
+                    <Box component="section" aria-label="Activity search results">
+                      {searchResults.length === 0 ? (
+                        <Text component="output">No activities match this search.</Text>
+                      ) : (
+                        <Stack gap="md">
+                          <Text component="output" aria-live="polite" aria-atomic="true">
+                            {searchResults.length} matching {searchResults.length === 1 ? 'activity' : 'activities'}
+                            {' '}in {searchGroups.size} {searchGroups.size === 1 ? 'week' : 'weeks'}.
+                          </Text>
+                          {[...searchGroups].map(([resultWeek, results]) => (
+                            <Box component="section" key={resultWeek} aria-label={`Search results for week ${weekRangeLabel(resultWeek)}`}>
+                              <Group justify="space-between">
+                                <Title order={4}>{weekDisplayLabel(resultWeek)}</Title>
+                                <Badge variant="light" color="gray">{results.length} {results.length === 1 ? 'activity' : 'activities'}</Badge>
+                              </Group>
+                              <ActivityList activities={results.map((result) => result.activity)} selectedId={searchSelectedId}
+                                onSelect={setSearchSelectedId} label={`Search results for week ${weekRangeLabel(resultWeek)}`} />
+                            </Box>
+                          ))}
+                          {searchSelected && <ActivityDetails activity={searchSelected} readOnly={cannotWrite}
+                            onEdit={() => setEditing({ activity: searchSelected })} onDelete={() => setDeleting(searchSelected)} />}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+                </Stack>
+              </Box>
+            )}
             {activities.length > 0 && <Grid gap="md" align="flex-start">
               <Grid.Col span={{ base: 12, lg: 4 }}>
                 <ActivityWeekNavigator weeks={weeks} selectedWeek={week} onSelect={selectWeek} />
@@ -125,7 +204,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
                   {weekActivities.length === 0 ? <Text>No activities recorded for this week.</Text> : (
                     <ActivityList activities={weekActivities} selectedId={selectedId} onSelect={setSelectedId} />
                   )}
-                  {selected && <ActivityDetails activity={selected} readOnly={cannotWrite}
+                  {selected && (!searchExpanded || !searchSelected) && <ActivityDetails activity={selected} readOnly={cannotWrite}
                     onEdit={() => setEditing({ activity: selected })} onDelete={() => setDeleting(selected)} />}
                 </Stack>
               </Grid.Col>
