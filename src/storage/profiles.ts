@@ -63,6 +63,7 @@ interface ProfileDirectoryEntry {
 
 interface ProfileDirectory {
   entries: () => AsyncIterable<[string, ProfileDirectoryEntry]>
+  removeEntry: (name: string) => Promise<void>
 }
 
 interface ProfileRepositoryDependencies {
@@ -254,6 +255,12 @@ async function containsFilename(directory: ProfileDirectory, filename: string): 
 export function createProfileRepository(
   dependencies: ProfileRepositoryDependencies = defaultDependencies,
 ) {
+  async function deleteProfile(id: string): Promise<void> {
+    const filename = getProfileFilename(id)
+    const directory = await dependencies.getDirectory()
+    await directory.removeEntry(filename.slice(1))
+  }
+
   async function createProfile(input: CreateProfileInput): Promise<Profile> {
     const normalized = normalizeProfile(input)
     const id = dependencies.createId()
@@ -413,11 +420,12 @@ export function createProfileRepository(
     }
   }
 
-  return { createProfile, listProfiles, openProfile }
+  return { createProfile, deleteProfile, listProfiles, openProfile }
 }
 
 const profileRepository = createProfileRepository()
 
 export const createProfile = (input: CreateProfileInput) => profileRepository.createProfile(input)
+export const deleteProfile = (id: string) => profileRepository.deleteProfile(id)
 export const listProfiles = () => profileRepository.listProfiles()
 export const openProfile = (id: string) => profileRepository.openProfile(id)

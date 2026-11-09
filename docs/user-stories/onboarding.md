@@ -21,18 +21,21 @@ cloud connection. Claim creation is deferred.
    The user selects an existing profile or enters a new profile label and
    optionally a real name.
 3. Creation initializes a separate database without replacing existing
-   profiles. The app offers optional simulated cloud setup after saving.
-4. The user can complete simulated setup, skip/cancel it, or continue locally
-   after a reported setup failure.
-5. The app opens `/claims` for that profile. A new profile has an empty
-   overview; returning profiles can show existing claims. No claim-creation
-   step or job-search activity entry is included in this milestone.
+   profiles. After saving, the app offers simulated setup or local continuation.
+4. Successful simulated setup is saved to that profile and opens its claims
+   overview. The user can instead continue locally, including after cancelling
+   setup or a reported setup failure.
+5. Selecting an existing profile opens its claims overview directly and reuses
+   its saved setup state. A new profile has an empty overview; returning
+   profiles can show existing claims. No claim-creation step or job-search
+   activity entry is included in this milestone.
 
 The order and presentation of screens are not prescribed by this story. This
-journey describes intended behavior. The app currently implements SQLite/OPFS
-storage, multiple local profile persistence and discovery, profile creation,
-and a profile-scoped claims overview with existing-claim display. Simulated
-cloud setup and claim creation are not yet implemented.
+journey describes intended behavior. The app implements SQLite/OPFS storage,
+multiple local profile persistence and discovery, profile creation,
+profile-scoped simulated setup, read-only access when required, and a
+profile-scoped claims overview with existing-claim display. Claim creation is
+not implemented.
 
 ## Acceptance criteria
 

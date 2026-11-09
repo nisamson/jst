@@ -39,6 +39,9 @@ test('validates profile labels, creates a profile, and defers persistence reques
   await form.getByRole('textbox', { name: 'Real name (optional)' }).fill('  Alex Example  ')
   await form.getByRole('button', { name: 'Create profile' }).click()
 
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await expect(page.getByText('Profile: Example profile')).toBeVisible()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: 'Example profile profile' })).toBeVisible()
   await expect(page.getByText('Alex Example')).toBeVisible()
   await expect(page.getByRole('note')).toContainText('Persistent storage was not granted.')
@@ -78,6 +81,8 @@ test('cancel leaves existing profiles unchanged and makes no persistence request
   let form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Existing profile')
   await form.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: 'Existing profile profile' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Create profile', exact: true }).click()
@@ -138,6 +143,8 @@ test('preserves form values after a save failure and allows retry', async ({ pag
 
   await page.evaluate(() => window.restoreProfileDirectory?.())
   await form.getByRole('button', { name: 'Create profile' }).click()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: 'Retry profile profile' })).toBeVisible()
   await expect(page.getByText('Riley Example')).toBeVisible()
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(1)
@@ -172,6 +179,8 @@ test('blocks duplicate submissions while a persistence request is pending', asyn
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(1)
 
   await page.evaluate(() => window.finishPersistenceRequest?.())
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Profiles' }).click()
   await expect(page.getByRole('button', { name: 'Single profile profile' })).toBeVisible()
   const profileFiles = await page.evaluate(async () => {
     const directory = await navigator.storage.getDirectory()

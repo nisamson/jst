@@ -24,7 +24,9 @@ test('does not request persistence on page load and reports a denied request aft
   await expect(page.getByRole('note')).toContainText('Persistent storage was not granted.')
   await expect(page.getByText('This is not a backup.', { exact: false })).toBeVisible()
   expect(await page.evaluate(() => window.persistRequestCount)).toBe(1)
-  await expect(page.getByRole('button', { name: 'Permission test profile' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await expect(page.getByText('Profile: Permission test')).toBeVisible()
+  await expect(page.getByRole('note').filter({ hasText: 'Profile is read-only' })).toContainText('profile-content changes are blocked.')
   expect(errors).toEqual([])
 })
 
@@ -64,8 +66,9 @@ test('remains usable and explains when persistence permission is unavailable', a
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill('Local despite permission')
   await form.getByRole('button', { name: 'Create profile' }).click()
-  await expect(page.getByRole('note')).toContainText('not supported by this browser')
-  await expect(page.getByRole('button', { name: 'Local despite permission profile' })).toBeVisible()
+  await expect(page.getByText('not supported by this browser')).toBeVisible()
+  await page.getByRole('button', { name: 'Continue without syncing' }).click()
+  await expect(page.getByText('Profile: Local despite permission')).toBeVisible()
 })
 
 test('reports initialization failure and supports retry', async ({ page }) => {

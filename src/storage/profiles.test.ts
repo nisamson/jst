@@ -27,6 +27,7 @@ const profileIds = [
 let databases: Map<string, FakeDatabase>
 let activeDatabase: FakeDatabase | undefined
 let failInsert: boolean
+let failRemove: boolean
 let storage: StorageSession
 
 function row(values: Record<string, SqlValue>): SqlRow {
@@ -43,6 +44,10 @@ function createHarness(ids = profileIds, persistence: 'granted' | 'denied' | 'un
       yield ['not-a-profile.sqlite3', { kind: 'file' }]
       yield ['profile-33333333-3333-4333-8333-333333333333.sqlite3', { kind: 'directory' }]
     },
+    async removeEntry(name: string) {
+      if (failRemove) throw new Error('The profile database is in use.')
+      if (!databases.delete(`/${name}`)) throw new Error('Database does not exist.')
+    },
   }))
   let nextId = 0
   const repository = createProfileRepository({
@@ -58,6 +63,7 @@ beforeEach(() => {
   databases = new Map()
   activeDatabase = undefined
   failInsert = false
+  failRemove = false
   storage = {
     async openDatabase(filename, options) {
       let database = databases.get(filename)
@@ -194,6 +200,30 @@ it('does not overwrite an existing profile when an ID collides', async () => {
 
   const listing = await repository.listProfiles()
   expect(listing).toEqual({ profiles: [existing], errors: [] })
+})
+
+it('deletes only the profile matching the validated ID', async () => {
+  const { repository } = createHarness()
+  const first = await repository.createProfile({ label: 'Duplicate label' })
+  const second = await repository.createProfile({ label: 'Duplicate label' })
+  const secondDatabase = databases.get(`/profile-${second.id}.sqlite3`)
+
+  await repository.deleteProfile(first.id)
+
+  expect(databases.has(`/profile-${first.id}.sqlite3`)).toBe(false)
+  expect(databases.get(`/profile-${second.id}.sqlite3`)).toBe(secondDatabase)
+  expect(await repository.listProfiles()).toEqual({ profiles: [second], errors: [] })
+  await expect(repository.openProfile(first.id)).rejects.toThrow(/does not exist/)
+  await expect(repository.deleteProfile('../other.sqlite3')).rejects.toThrow(/invalid/)
+})
+
+it('surfaces profile deletion failures without removing the profile', async () => {
+  const { repository } = createHarness()
+  const profile = await repository.createProfile({ label: 'Keep on failure' })
+  failRemove = true
+
+  await expect(repository.deleteProfile(profile.id)).rejects.toThrow('The profile database is in use.')
+  expect(await repository.listProfiles()).toEqual({ profiles: [profile], errors: [] })
 })
 
 it('reports failed creation and does not expose an incomplete database as a profile', async () => {
