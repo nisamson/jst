@@ -30,7 +30,11 @@ navigation inside the `StorageStatus` capability boundary.
   rather than issuing SQL themselves.
 - `ClaimsPage` owns profile loading, retries, and claim data.
   `ClaimsWorkspace` composes profile access context, `ClaimSidebar` navigation,
-  `ClaimOverview` details, empty/stale states, and confirmed deletion.
+  `ClaimOverview` details, `ClaimFormDialog` create/edit forms, empty/stale states,
+  and confirmed deletion.
+- `src/storage/claims.ts` normalizes claim input and provides transactional
+  create/update/delete operations. `src/storage/activity-schema.ts` defines the
+  version 4 activity table/index; profile initialization and migration share it.
 - `src/storage/profiles.ts` owns profile create/list/open operations. Each
   profile has a stable ID and a separate SQLite database in OPFS.
 - `src/storage/simulated-sync-state.ts` persists successful simulated setup

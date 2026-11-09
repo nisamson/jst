@@ -18,6 +18,7 @@ function renderWorkspace(overrides: Partial<ComponentProps<typeof ClaimsWorkspac
         claims={claims}
         onNavigate={vi.fn()}
         onDelete={vi.fn()}
+        onSave={vi.fn()}
         {...overrides}
       />
     </MantineProvider>,
@@ -30,6 +31,7 @@ it('distinguishes duplicate identifiers and selects an explicit stable ID instea
   expect(html).toMatch(/aria-label="Same label, record newest"[^>]*aria-pressed="false"/)
   expect(html).toMatch(/aria-label="Same label, record older"[^>]*aria-pressed="true"/)
   expect(html).toContain('Selected claim: Same label, record older')
+  expect(html).toMatch(/id="claim-overview-heading"[^>]*>Same label overview<\/h2>/)
   expect(html).toContain('2025-03-01T12:00:00.000Z')
 })
 
@@ -47,7 +49,7 @@ it('shows only one empty state and no claim actions for an empty profile', () =>
   const html = renderWorkspace({ claims: [] })
 
   expect(html.match(/No claims yet/g)).toHaveLength(1)
-  expect(html).toContain('Claim creation is not available yet.')
+  expect(html).toContain('Use Create claim to add your first record')
   expect(html).not.toContain('Delete claim')
   expect(html).not.toContain('aria-label="Claims"')
 })

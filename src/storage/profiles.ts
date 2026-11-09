@@ -2,8 +2,9 @@ import { initializeStorage } from './local-storage'
 import type { StorageSession } from './local-storage'
 import { getPersistenceStatus } from './environment'
 import type { Persistence } from './environment'
+import { createActivitySchema } from './activity-schema'
 
-const PROFILE_DATABASE_VERSION = 3
+const PROFILE_DATABASE_VERSION = 5
 const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
 const CREATE_CLAIMS_TABLE = `
@@ -22,6 +23,7 @@ const CREATE_SIMULATED_SYNC_TABLE = `
     connected_at TEXT NOT NULL
   )
 `
+const ADD_CLAIM_OVERVIEW = 'ALTER TABLE claims ADD COLUMN overview TEXT'
 
 export interface Profile {
   id: string
@@ -133,7 +135,7 @@ async function readProfile(storage: StorageSession, id: string): Promise<Profile
 async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   const [versionRow] = await storage.execute('PRAGMA user_version')
   if (versionRow?.user_version === PROFILE_DATABASE_VERSION) return
-  if (versionRow?.user_version !== 1 && versionRow?.user_version !== 2) {
+  if (typeof versionRow?.user_version !== 'number' || versionRow.user_version < 1 || versionRow.user_version > 4) {
     throw new Error('The local profile database cannot be migrated from its current version.')
   }
 
@@ -150,6 +152,10 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
         await storage.execute(CREATE_CLAIMS_TABLE)
       } else if (currentVersion === 2) {
         await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
+      } else if (currentVersion === 3) {
+        await createActivitySchema(storage.execute)
+      } else if (currentVersion === 4) {
+        await storage.execute(ADD_CLAIM_OVERVIEW)
       } else {
         throw new Error('The local profile database cannot be migrated from its current version.')
       }
@@ -252,6 +258,12 @@ async function containsFilename(directory: ProfileDirectory, filename: string): 
   return false
 }
 
+async function enableForeignKeys(storage: StorageSession) {
+  await storage.execute('PRAGMA foreign_keys = ON')
+  const [row] = await storage.execute('PRAGMA foreign_keys')
+  if (row?.foreign_keys !== 1) throw new Error('Foreign-key enforcement is required to open this profile safely.')
+}
+
 export function createProfileRepository(
   dependencies: ProfileRepositoryDependencies = defaultDependencies,
 ) {
@@ -274,6 +286,7 @@ export function createProfileRepository(
       }
 
       await storage.openDatabase(filename, { create: true })
+      await enableForeignKeys(storage)
       let transactionOpen = false
       try {
         await storage.execute('BEGIN IMMEDIATE')
@@ -298,6 +311,8 @@ export function createProfileRepository(
         `)
         await storage.execute(CREATE_CLAIMS_TABLE)
         await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
+        await createActivitySchema(storage.execute)
+        await storage.execute(ADD_CLAIM_OVERVIEW)
         await storage.execute(
           'INSERT INTO profile_metadata (id, profile_id, label, real_name, created_at) VALUES (1, ?, ?, ?, ?)',
           [id, normalized.label, normalized.realName ?? null, createdAt],
@@ -364,9 +379,10 @@ export function createProfileRepository(
     const storage = await dependencies.initializeStorage()
     try {
       await storage.openDatabase(filename)
+      await enableForeignKeys(storage)
       const profile = await readProfile(storage, id)
       const [versionRow] = await storage.execute('PRAGMA user_version')
-      const syncConnected = versionRow?.user_version === PROFILE_DATABASE_VERSION
+      const syncConnected = typeof versionRow?.user_version === 'number' && versionRow.user_version >= 3
         ? await hasSimulatedSyncAccess(storage)
         : false
       const persistence = await dependencies.getPersistenceStatus()

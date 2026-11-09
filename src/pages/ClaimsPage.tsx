@@ -2,8 +2,8 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Alert, Anchor, Breadcrumbs, Button, Container, Group, Loader, Stack, Text, Title } from '@mantine/core'
 import { openProfile } from '../storage/profiles'
 import type { ProfileSession } from '../storage/profiles'
-import { deleteProfileClaim, listClaims } from '../storage/claims'
-import type { Claim } from '../storage/claims'
+import { deleteProfileClaim, listClaims, saveProfileClaim } from '../storage/claims'
+import type { Claim, ClaimInput } from '../storage/claims'
 import ClaimsWorkspace from '../components/ClaimsWorkspace'
 import { developerToolsEnabled } from '../storage/developer-tools'
 
@@ -133,6 +133,18 @@ function ClaimsOverview({
       : current)
   }
 
+  async function saveClaim(input: ClaimInput, id?: string) {
+    const claim = await saveProfileClaim(profileId, input, id)
+    setProfileState((current) => current.state === 'loaded'
+      ? {
+        ...current,
+        claims: [...current.claims.filter((item) => item.id !== claim.id), claim]
+          .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id)),
+      }
+      : current)
+    return claim
+  }
+
   async function changeDummyClaims(action: 'add' | 'remove') {
     if (!developerToolsEnabled()) return
     const tools = await import('../storage/developer-claims')
@@ -198,6 +210,7 @@ function ClaimsOverview({
             claimId={claimId}
             onNavigate={onNavigate}
             onDelete={removeClaim}
+            onSave={saveClaim}
           />
         )}
         {profileState.state === 'loaded' && DeveloperClaimsTools && (

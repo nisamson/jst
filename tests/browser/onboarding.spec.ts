@@ -49,6 +49,10 @@ test('continues a new local profile to its read-only claims overview and reopens
 })
 
 test('shows the data-loss warning inline on mobile widths', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: async () => false })
+  })
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')

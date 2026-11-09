@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Grid, Group, Paper, Stack, Text, Title, VisuallyHidden } from '@mantine/core'
-import type { Claim } from '../storage/claims'
+import type { Claim, ClaimInput } from '../storage/claims'
 import type { ProfileSession } from '../storage/profiles'
 import ClaimOverview from './ClaimOverview'
 import ClaimSidebar from './ClaimSidebar'
 import ConfirmDeletionDialog from './ConfirmDeletionDialog'
+import ClaimFormDialog from './ClaimFormDialog'
 
 export default function ClaimsWorkspace({
   profile,
@@ -13,6 +14,7 @@ export default function ClaimsWorkspace({
   claimId,
   onNavigate,
   onDelete,
+  onSave,
 }: {
   profile: ProfileSession['profile']
   access: ProfileSession['access']
@@ -20,8 +22,10 @@ export default function ClaimsWorkspace({
   claimId?: string
   onNavigate: (path: string) => void
   onDelete: (claim: Claim) => Promise<void>
+  onSave: (input: ClaimInput, claimId?: string) => Promise<Claim>
 }) {
   const [claimToDelete, setClaimToDelete] = useState<Claim>()
+  const [editing, setEditing] = useState<{ claim?: Claim }>()
   const selectedClaimId = claimId ?? claims[0]?.id
   const selectedClaim = claims.find((claim) => claim.id === selectedClaimId)
   const overviewPath = `/claims?profile=${encodeURIComponent(profile.id)}`
@@ -31,6 +35,12 @@ export default function ClaimsWorkspace({
     await onDelete(claim)
     setClaimToDelete(undefined)
     onNavigate(overviewPath)
+  }
+
+  async function saveClaim(input: ClaimInput) {
+    const saved = await onSave(input, editing?.claim?.id)
+    setEditing(undefined)
+    onNavigate(`${overviewPath}&claim=${encodeURIComponent(saved.id)}`)
   }
 
   return (
@@ -44,7 +54,10 @@ export default function ClaimsWorkspace({
             {readOnly ? 'Read-only' : 'View and edit'}
           </Badge>
         </Stack>
-        <Button variant="default" onClick={() => onNavigate('/')}>Switch profile</Button>
+        <Group>
+          <Button disabled={readOnly} onClick={() => setEditing({})}>Create claim</Button>
+          <Button variant="default" onClick={() => onNavigate('/')}>Switch profile</Button>
+        </Group>
       </Group>
       {readOnly && (
         <Alert color="yellow" role="note" title="Profile is read-only">
@@ -87,22 +100,34 @@ export default function ClaimsWorkspace({
               claim={selectedClaim}
               canDelete={!readOnly}
               onDelete={() => setClaimToDelete(selectedClaim)}
+              onEdit={() => setEditing({ claim: selectedClaim })}
             />
           ) : (
             <Paper component="section" aria-labelledby="empty-claims-heading" withBorder p="lg" radius="md">
               <Stack gap="xs">
                 <Title id="empty-claims-heading" order={2}>No claims yet</Title>
-                <Text c="dimmed">This profile has no claim records. Claim creation is not available yet.</Text>
-                <Text size="sm">You can switch profiles to review claims stored in another local profile.</Text>
+                <Text c="dimmed">This profile has no claim records.</Text>
+                <Text size="sm">{readOnly
+                  ? 'You can view this profile, but creating a claim requires write access.'
+                  : 'Use Create claim to add your first record, with an identifier and optional start date.'}</Text>
               </Stack>
             </Paper>
           )}
         </Grid.Col>
       </Grid>
+      {editing && (
+        <ClaimFormDialog
+          claim={editing.claim}
+          readOnly={readOnly}
+          onClose={() => setEditing(undefined)}
+          onSave={saveClaim}
+        />
+      )}
       {claimToDelete && (
         <ConfirmDeletionDialog
           itemType="claim"
           name={claimToDelete.identifier}
+          recordId={claimToDelete.id}
           onClose={() => setClaimToDelete(undefined)}
           onConfirm={() => removeClaim(claimToDelete)}
         />

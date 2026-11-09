@@ -4,6 +4,7 @@ import { Alert, Button, Group, Modal, Stack, Text, TextInput } from '@mantine/co
 interface ConfirmDeletionDialogProps {
   itemType: 'profile' | 'claim'
   name: string
+  recordId?: string
   onClose: () => void
   onConfirm: () => Promise<void>
 }
@@ -11,6 +12,7 @@ interface ConfirmDeletionDialogProps {
 export default function ConfirmDeletionDialog({
   itemType,
   name,
+  recordId,
   onClose,
   onConfirm,
 }: ConfirmDeletionDialogProps) {
@@ -43,9 +45,10 @@ export default function ConfirmDeletionDialog({
     >
       <Stack gap="md">
         <Text>
-          This permanently deletes {itemType === 'profile' ? 'the profile and all its claims' : 'this claim'}.
+          This permanently deletes {itemType === 'profile' ? 'the profile, all its claims, and all their activities' : 'this claim and all its associated activities'}.
           Type <strong>{name}</strong> to confirm.
         </Text>
+        {recordId && <Text size="sm" style={{ overflowWrap: 'anywhere' }}>Record ID: {recordId}</Text>}
         <TextInput
           label={`Type ${itemType} name to confirm`}
           value={enteredName}
