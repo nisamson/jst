@@ -58,7 +58,7 @@ test('opens an empty profile-scoped overview, survives reload, and switches prof
   await expect(breadcrumb).toContainText('Claims')
   await expect(page.getByText('Profile: First profile')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /create claim/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create claim', exact: true })).toBeEnabled()
   await expect(page.getByRole('heading', { name: 'Developer claim tools' })).toBeVisible()
 
   await page.reload()
@@ -88,6 +88,7 @@ test('upgrades an existing version-one profile without losing its metadata', asy
     const profile = (await storage.listProfiles()).profiles.find((item) => item.label === 'Legacy profile')
     if (!profile) throw new Error('Legacy test profile was not found.')
     const legacy = await storage.openProfile(profile.id)
+    await legacy.execute('DROP TABLE activities')
     await legacy.execute('DROP TABLE claims')
     await legacy.execute('PRAGMA user_version = 1')
     await legacy.dispose()
@@ -103,7 +104,7 @@ test('upgrades an existing version-one profile without losing its metadata', asy
   })
 
   expect(migration.profile.label).toBe('Legacy profile')
-  expect(migration.version).toBe(3)
+  expect(migration.version).toBe(5)
   expect(migration.claimsTableExists).toBe(true)
 })
 
@@ -138,7 +139,14 @@ test('lists persistent claims, selects their metadata, and isolates them by prof
   await page.getByRole('button', { name: 'Claims one profile' }).click()
   await expect(page.getByRole('button', { name: 'Claim 2026' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
-  await expect(page.getByText('Record created: 2026-03-01T12:00:00.000Z')).toBeVisible()
+  const localizedCreatedAt = await page.evaluate(() => new Date('2026-03-01T12:00:00.000Z').toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }))
+  await expect(page.getByRole('heading', { name: 'Claim 2026 overview', exact: true })).toBeVisible()
+  const createdTime = page.getByRole('region', { name: 'Claim 2026 overview', exact: true }).locator('time').first()
+  await expect(createdTime).toHaveText(localizedCreatedAt)
+  await expect(createdTime).toHaveAttribute('dateTime', '2026-03-01T12:00:00.000Z')
   await expect(page.getByText('Claim start date: 2026-02-01')).toBeVisible()
 
   await page.getByRole('button', { name: 'Claim 2025' }).click()
@@ -239,13 +247,13 @@ test('deletes only the selected claim when identifiers are duplicated', async ({
   await original.focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=claim-newer$`))
-  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: claim-newer')
+  await expect(page.getByRole('region', { name: 'Claim 2026 overview', exact: true })).toContainText('Record ID: claim-newer')
   await duplicate.focus()
   await page.keyboard.press('Space')
   await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=duplicate-claim-id$`))
   await page.reload()
   await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: duplicate-claim-id')
+  await expect(page.getByRole('region', { name: 'Claim 2026 overview', exact: true })).toContainText('Record ID: duplicate-claim-id')
   await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Delete claim?' })
   await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
@@ -330,7 +338,7 @@ test('recovers from a stale claim selection by selecting an available claim', as
 
   await page.goto(`/claims?profile=${profileId}&claim=deleted-claim`)
   await expect(page.getByRole('alert')).toContainText('The selected claim is unavailable')
-  await expect(page.getByRole('heading', { name: 'Claim overview' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: / overview$/, level: 2 })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete claim', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Claim 2026' }).click()
@@ -364,7 +372,7 @@ test('reports claim read failures without showing a partial overview', async ({ 
   await page.goto(`/claims?profile=${profileId}`)
   await expect(page.getByRole('alert')).toContainText('Claims could not be loaded')
   await expect(page.getByRole('alert')).toContainText('no such table: claims')
-  await expect(page.getByRole('heading', { name: 'Claim overview' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: / overview$/, level: 2 })).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Claims', exact: true })).toHaveCount(0)
 
   await page.evaluate(async (id) => {
@@ -372,7 +380,7 @@ test('reports claim read failures without showing a partial overview', async ({ 
     const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
     const session = await storage.openProfile(id)
     try {
-      await session.execute('CREATE TABLE claims (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, created_at TEXT NOT NULL, claim_start_date TEXT)')
+      await session.execute('CREATE TABLE claims (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, created_at TEXT NOT NULL, claim_start_date TEXT, overview TEXT)')
       await session.execute(
         'INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES (?, ?, ?, ?)',
         ['recovered-claim', 'Recovered claim', '2026-03-01T12:00:00.000Z', null],
@@ -412,6 +420,8 @@ test('stacks claim navigation on mobile and permits read-only keyboard selection
   await page.getByRole('button', { name: 'Read-only claims profile', exact: true }).click()
   await expect(page.getByRole('note')).toContainText('profile-content changes are blocked.')
   await expect(page.getByRole('button', { name: 'Delete claim', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Create claim', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Edit claim', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Add dummy claims', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Remove dummy claims', exact: true })).toBeDisabled()
   const writeError = await page.evaluate(async (id) => {
@@ -427,7 +437,7 @@ test('stacks claim navigation on mobile and permits read-only keyboard selection
   expect(writeError).toContain('This profile is read-only.')
 
   const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
-  const detail = page.getByRole('region', { name: 'Claim overview' })
+  const detail = page.getByRole('region', { name: / overview$/ })
   const desktopList = await navigation.boundingBox()
   const desktopDetail = await detail.boundingBox()
   expect(desktopList).not.toBeNull()
@@ -526,7 +536,7 @@ test('developer dummy claims persist, remain profile-scoped, and can be removed 
   await expect(navigation.getByRole('button')).toHaveCount(6)
   await navigation.getByRole('button', { name: 'Dummy claim 2026, record developer-dummy-claim-duplicate', exact: true }).click()
   await page.reload()
-  await expect(page.getByRole('region', { name: 'Claim overview' })).toContainText('Record ID: developer-dummy-claim-duplicate')
+  await expect(page.getByRole('region', { name: 'Dummy claim 2026 overview', exact: true })).toContainText('Record ID: developer-dummy-claim-duplicate')
 
   await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
   await page.getByRole('button', { name: 'Dummy tools two profile', exact: true }).click()

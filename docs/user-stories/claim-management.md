@@ -3,8 +3,8 @@
 ## Status and scope
 
 The app currently lists claims for a selected local profile, lets the user
-select and view claim metadata, and supports confirmed claim deletion. Claim
-creation and editing are not implemented. Job-search activities, weekly
+select and view claim metadata, and supports claim creation, editing, and
+confirmed deletion. Job-search activity entry, weekly
 grouping, and activity search are future work; the activity fields and data
 rules are defined in the [job-search activity data model](../job-search-data-model.md).
 
@@ -69,9 +69,16 @@ can find a particular record without reviewing every week.
 - The user can change the identifier and set, change, or clear the optional
   start date. Editing does not replace the record ID or change the original
   app record creation timestamp.
-- Claim identifier validation and duplicate-identifier policy are not
-  established by this story; the implementation must not silently invent a
-  uniqueness rule or imply ESD validation.
+- An optional Overview holds plain-text overall notes or a description. Trim
+  surrounding whitespace, preserve internal spacing and line breaks, and store
+  blank/absent values as NULL. The create/edit form supports changing or clearing
+  notes; the detail panel renders them as text, never HTML or Markdown.
+- Claim identifiers are trimmed, must contain non-whitespace text, and may
+  duplicate other identifiers. Internal whitespace is preserved, with no
+  arbitrary length or format restriction and no ESD validation.
+- The optional start date is trimmed and must be a real `YYYY-MM-DD` calendar
+  date (years 0001–9999), or blank/absent to clear it. It is not converted
+  through timezones. Future dates are permitted; no eligibility check is made.
 - Deletion requires explicit confirmation identifying the claim. The
   confirmation explains that all activities belonging to the claim will also
   be deleted. Cancelling leaves the claim and its activities unchanged.
@@ -143,8 +150,7 @@ can find a particular record without reviewing every week.
 
 ## Open decisions and boundaries
 
-- Claim identifier validation, duplicate-identifier handling, and any
-  additional claim fields.
+- Additional claim fields.
 - Activity search fields, match semantics, filters, sorting, and result
   presentation.
 - Activity deletion confirmation and undo behavior.
@@ -170,8 +176,8 @@ can find a particular record without reviewing every week.
   button; the detail region announces the updated selection politely.
 - The detail panel shows the identifier, stable record ID, original creation
   timestamp, optional start date, and the existing confirmed deletion action.
-  Do not introduce claim creation/editing controls or activity placeholders
-  that imply those later supertasks are already implemented.
+  Claim creation/editing controls are added by #29; activity entry remains
+  separate work.
 - Show profile context, claim count, and a read-only/view-and-edit badge above
   the workspace. Keep a Profiles breadcrumb and an explicit Switch profile
   action available. Read-only mode still permits selection, but disables
@@ -180,10 +186,41 @@ can find a particular record without reviewing every week.
   content. Storage errors replace the workspace, explain that no data changed,
   and offer retry or return to profiles. Retrying preserves the requested
   claim ID and rechecks access.
-- A genuinely empty profile shows one empty-state panel explaining that claim
-  entry is not available yet. An explicit missing claim ID instead shows the
+- A genuinely empty profile shows one empty-state panel directing users with
+  write access to Create claim. An explicit missing claim ID instead shows the
   stale-selection warning, no claim metadata or deletion control, and a way
   to return to the newest available claim or select from the current profile.
   Never substitute another claim for an explicit unavailable selection.
 - Keep profile sessions keyed by profile ID and retry attempt, so navigation
   cannot expose another profile's data or retain its deletion dialog.
+
+## Claim lifecycle decisions (#29, #36–#41)
+
+Create claim opens a Mantine modal containing an identifier and optional start
+date. Date entry uses a Mantine-styled native date input, providing the browser's
+calendar picker and localized keyboard entry while storing `YYYY-MM-DD` strings
+without timezone conversion. An explicit Clear start date button unsets the
+optional date; the change is persisted only on save. Incomplete or invalid input blocks saving rather
+than silently clearing an existing date. Use date-picker inputs for editable
+calendar dates rather than plain text fields.
+Edit claim reuses that form, retaining the stable ID and original creation
+timestamp. Saves select the saved claim via its existing direct-link route.
+Cancel leaves stored data unchanged; failed saves retain entries and allow retry.
+Read-only profiles disable create/edit/delete controls, and storage operations
+recheck access when opening their own profile session.
+
+Deletion still requires the exact identifier and now also shows the stable
+record ID to distinguish duplicates. It explains that all associated activities
+are removed. The foreign-key cascade and claim deletion run inside one explicit
+transaction so even a failing activity trigger cannot leave a partial deletion.
+Other claims, activities, profile metadata, and simulated sync state are retained.
+
+The schema prerequisite #39 is included in this slice: version 4 introduces the
+reviewed activities table/index, but no activity CRUD or entry UI. Writable
+versions 1–3 migrate transactionally; read-only profiles remain on their existing
+schema and are never migrated merely for viewing. Version 3 simulated setup
+continues to permit opening and migrating a profile when persistence is denied.
+Version 5 adds the nullable claim `overview` column transactionally, including
+for existing version 4 profiles. Existing claims retain their identity and
+metadata, with no overview until one is saved. Legacy read-only sessions select
+an empty overview without attempting a schema change.

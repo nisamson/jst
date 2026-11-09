@@ -84,6 +84,18 @@ beforeEach(() => {
     async execute(sql, bind): Promise<SqlRow[]> {
       if (!activeDatabase) throw new Error('No database is open.')
       const statement = sql.replaceAll(/\s+/g, ' ').trim()
+      if (statement === 'PRAGMA foreign_keys = ON') return []
+      if (statement === 'PRAGMA foreign_keys') return [row({ foreign_keys: 1 })]
+      if (statement === 'ALTER TABLE claims ADD COLUMN overview TEXT') return []
+      if (statement === 'PRAGMA user_version = 5') {
+        activeDatabase.version = 5
+        return []
+      }
+      if (statement.startsWith('CREATE TABLE activities') || statement.startsWith('CREATE INDEX activities_claim_date')) return []
+      if (statement === 'PRAGMA user_version = 4') {
+        activeDatabase.version = 4
+        return []
+      }
       if (statement === 'PRAGMA query_only = ON') {
         activeDatabase.queryOnly = true
         return []
@@ -179,7 +191,7 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
 
   const opened = await repository.openProfile(first.id)
   expect(opened.profile).toEqual(first)
-  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(3)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(5)
   expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasClaimsTable).toBe(true)
   expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
@@ -292,7 +304,7 @@ it('migrates a version-one profile without changing its metadata', async () => {
     realName: 'Alex Example',
     createdAt: '2026-01-01T00:00:00.000Z',
   })
-  expect(legacy.version).toBe(3)
+  expect(legacy.version).toBe(5)
   expect(legacy.hasClaimsTable).toBe(true)
   expect(legacy.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
@@ -318,7 +330,7 @@ it('migrates a version-two profile by adding simulated setup state', async () =>
   const opened = await repository.openProfile(profileIds[0])
 
   expect(opened.profile.label).toBe('Existing profile')
-  expect(existing.version).toBe(3)
+  expect(existing.version).toBe(5)
   expect(existing.hasSimulatedSyncTable).toBe(true)
   await opened.dispose()
 })

@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-This is the reviewed design for #18, not an implemented schema. Activity
-CRUD, entry UI, migrations, attachment storage, claim creation, and ESD
-integration are outside this issue.
+This is the reviewed design for #18. The version 4 activities schema and
+transactional migration are implemented by #39 alongside claim lifecycle work.
+Activity CRUD and entry UI, attachments, and ESD integration remain future work.
 
 The app records information for the user's own log. It does not determine
 eligibility, approve activities, assess compliance, or file anything with ESD.
@@ -173,9 +173,8 @@ that no longer apply, and save the complete change atomically. Preserve the
 record's identity, owning claim, and creation time during a kind change.
 Do not leave a partially converted record.
 
-Confirmed deletion of a claim also deletes all of its activities. Future
-implementation must make this consequence clear in the existing confirmation
-flow and apply deletion atomically. Deleting a profile continues to remove
+Confirmed deletion of a claim also deletes all of its activities. The confirmation
+flow explains this consequence and applies deletion atomically. Deleting a profile continues to remove
 that profile's database, including its activities.
 
 ## SQLite mapping
@@ -185,8 +184,8 @@ non-null; nullable detail columns are constrained according to kind. This
 avoids detail-table joins and the additional invariant of exactly one matching
 detail row, at the cost of unused columns and conditional checks.
 
-The following illustrative DDL expresses relational constraints, not a
-shipped migration. Service validation still handles canonical formats, actual
+The following DDL expresses the relational constraints implemented in
+`src/storage/activity-schema.ts`. Future activity-service validation must handle canonical formats, actual
 calendar validity, text normalization, and warning behavior.
 
 ```sql
@@ -287,31 +286,28 @@ Foreign-key enforcement must be enabled on every relevant connection before
 starting transactions. Declaring a foreign key does not by itself ensure
 enforcement or cascading deletion.
 
-## Future migration and implementation requirements
+## Migration and remaining implementation requirements
 
-The current profile schema is version 3 in `src/storage/profiles.ts`.
-Activity implementation should use the next available `PRAGMA user_version`
-migration, version 4 if no intervening schema change occurs.
+The current profile schema is version 5 in `src/storage/profiles.ts`.
+Writable versions 1–3 migrate through their existing steps before creating
+the activities table and index, preserving metadata, claims, and simulated
+sync setup. The version 4-to-5 step adds nullable overall claim notes in the
+`overview` column, without changing activity records. New profiles initialize
+the same schema.
 
-Update new-profile schema initialization and the existing transactional
-migration chain together. Older supported profile versions must migrate
-through their existing steps before the activity migration. Preserve profile
-metadata, claims, and simulated sync setup; create no invented or backfilled
-activities.
-
-Create the activity table and index, enable foreign keys on relevant
-connections, and update schema-version compatibility handling and claim
-deletion behavior together. Keep discovery and read-only access compatible
-with their existing responsibilities; never migrate using a read-only
-session. Roll back failures instead of resetting or replacing a database.
-Previously released clients must not write an unsupported newer schema.
+Foreign-key enforcement is enabled and verified before profile initialization,
+migration, or profile-session use. No activities are invented or backfilled.
+Discovery and read-only access retain their existing responsibilities; viewing
+a read-only profile does not migrate it. Failures roll back rather than resetting
+or replacing a database, and unsupported newer schema versions remain rejected.
 
 Follow-up tests should cover each kind's required and inapplicable fields,
 conditional contact details, blank normalization, valid calendar dates,
 Sunday/Saturday and year-boundary grouping, future-date and evidence
 warnings, kind replacement, duplicate records, ownership isolation,
-cascading deletion, and migration preservation/rollback. This issue adds no
-runtime implementation or runtime tests.
+cascading deletion, and migration preservation/rollback. Schema constraints,
+cascading deletion, and migration preservation/rollback now have browser coverage;
+activity-service validation, weekly grouping, and entry UI remain future work.
 
 ## Deferred decisions
 
