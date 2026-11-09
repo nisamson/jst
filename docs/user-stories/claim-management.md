@@ -5,7 +5,8 @@
 The app currently lists claims for a selected local profile, lets the user
 select and view claim metadata, and supports claim creation, editing, and
 confirmed deletion, plus claim-scoped activity creation, review, editing, and
-deletion. Weekly grouping and activity search are future work; the activity fields and data
+deletion with a weekly overview and selected-week view. Activity search is future
+work; the activity fields and data
 rules are defined in the [job-search activity data model](../job-search-data-model.md).
 
 Claims and activities are separate records. A claim belongs to one profile;
@@ -153,8 +154,6 @@ can find a particular record without reviewing every week.
 - Additional claim fields.
 - Activity search fields, match semantics, filters, sorting, and result
   presentation.
-- Presentation details for the weekly view, including week labels and
-  navigation between weeks.
 - Attachments, export, provider integration, synchronization, and ESD filing
   remain separate feature work.
 
@@ -169,7 +168,7 @@ can find a particular record without reviewing every week.
   parameters, preserving direct links, reload, and browser back/forward.
 - Each claim is a keyboard-operable selection button in a named navigation
   list, with `aria-pressed` indicating the current selection. Show its optional
-  start date, and show the full stable record ID for duplicate identifiers so
+  start date, creation date for duplicate identifiers, and local Entry numbers so
   even claims with matching labels and dates can be distinguished. Wrap long
   identifiers rather than truncating them. Selection leaves focus on the
   button; the detail region announces the updated selection politely.
@@ -208,8 +207,9 @@ Cancel leaves stored data unchanged; failed saves retain entries and allow retry
 Read-only profiles disable create/edit/delete controls, and storage operations
 recheck access when opening their own profile session.
 
-Deletion still requires the exact identifier and now also shows the stable
-record ID to distinguish duplicates. It explains that all associated activities
+Deletion still requires the exact identifier and shows the entry label and dates
+to distinguish duplicates. The stable record ID is available in collapsed
+Technical details. It explains that all associated activities
 are removed. The foreign-key cascade and claim deletion run inside one explicit
 transaction so even a failing activity trigger cannot leave a partial deletion.
 Other claims, activities, profile metadata, and simulated sync state are retained.
@@ -228,10 +228,11 @@ an empty overview without attempting a schema change.
 
 The selected claim has an activity section below its overview, with a
 newest-activity-date-first list and a detail panel for the selected record.
-Matching entries show stable IDs and remain individually selectable. Activity
+Matching entries use local Entry numbers and remain individually selectable. Activity
 selection is local to this section; existing claim URLs and history are
 unchanged. Switching claim/profile or reloading the section clears its selection,
-forms, and pending dialogs. No weekly grouping or search is introduced here.
+forms, and pending dialogs. Weekly grouping is introduced separately by #31;
+search remains future work.
 
 Add/edit uses one native-date-picker form with conditional fields for employer
 contact, WorkSource activity, or other activity. Changing kind clears the
@@ -241,7 +242,7 @@ field set atomically. Future dates and missing documentation descriptions show
 non-blocking reminders. Optional text is clearable by emptying its field.
 
 Activity deletion uses a simple confirmation identifying the activity, date,
-and stable ID, with explicit Delete activity and Cancel actions. No typed
+and entry label, with explicit Delete activity and Cancel actions. No typed
 confirmation or undo is required. Cancelling leaves all records unchanged.
 Successful deletion removes only that record; other activities and the owning
 claim remain. Failures retain the dialog and record and allow retry or cancel.
@@ -251,3 +252,64 @@ Reload activities rechecks stored data and access. Legacy read-only profiles
 without an activities table display an empty read-only section without
 migration. Every mutation opens a new profile session and rechecks write access,
 even if the form was opened while the profile was writable.
+
+## Weekly activity view decisions (#31, #46–#48)
+
+Combine a week overview with one selected-week view. The overview lists every
+Sunday-through-Saturday week from the earliest to the latest activity date,
+newest first, including empty intervening weeks. Each button shows the explicit
+date range and activity count, or **No activities recorded** for gaps. These
+are activity weeks, not a record of filings or missed requirements.
+
+Long histories are paged in sets of 12 weeks, with Newer weeks/Older weeks
+controls and an explicit total/empty-week count. Paging limits only the rendered
+overview, never the number of records or navigable weeks. Selecting or jumping
+to a week brings its overview page into view; weeks outside the recorded range
+remain navigable without extending that range. The overview sits beside the
+selected-week view at Mantine's `lg` breakpoint, and above it on narrower screens.
+
+Initially select the week containing the newest activity date. An empty claim
+shows only its empty-state message and add action, without the overview or any
+week controls; its first activity defaults to today's local date. Previous
+week/Next week sit alongside a single localized range heading and count.
+Current week appears only when viewing another week. A collapsed Jump to week
+disclosure contains the native date picker and Go to week action, allowing empty
+weeks and distant history to be opened. Invalid/incomplete entries do not change
+the selection. Read-only access keeps navigation available when activities exist.
+Help holds grouping rules and the ESD disclaimer in a collapsed disclosure;
+Reload activities is a subtle secondary action, while failures retain explicit
+Retry controls. Week overview entries show short localized ranges/counts and
+muted gap placeholders, with no repeated explanatory paragraph.
+
+Within the selected week, keep newest-activity-date-first ordering, creation time
+and stable ID tie-breakers, and the existing record detail/actions. Changing week
+clears the selected activity. Add activity starts with the selected week's Sunday
+(today when viewing the current week); the user may choose another date. Saving
+or editing an activity selects its resulting week and record. Failed/cancelled
+changes do not move it. Deletion retains the selected week even when it becomes
+empty, and updates the derived counts/range. Deleting the last activity in a
+claim hides the weekly interface entirely. Reload returns to the initial week.
+
+Group solely by the entered calendar date, never record timestamps or local
+timezone conversions. Gregorian arithmetic handles Sunday/Saturday, leap days,
+year changes, and daylight-saving boundaries. Navigation stays within weeks
+containing supported input dates (0001–9999); a boundary week's label may include
+the adjoining year 0000 or 10000 to show its complete Sunday–Saturday range.
+No weekly entity, schema migration, saved week-ending value, weekly count cap,
+or search behavior is introduced.
+
+## Record identity presentation
+
+Stable IDs remain internal selection/storage keys, not routine user-facing
+labels or screen-reader announcements. Claim and activity details and deletion
+dialogs expose the full ID only through a collapsed Technical details
+disclosure, with Copy ID feedback and a manual-copy fallback on clipboard
+failure. Switching records collapses the disclosure and resets copy feedback.
+Creation/edit timestamps remain visible.
+
+Claim navigation shows name/start date and adds creation date and Entry numbers
+when names repeat. Activity entries show their summary/date/kind and add Entry
+numbers only when those visible details match. Numbers are assigned by stable-ID
+order within the matching set, independently of display order; they are local
+presentation labels, not permanent record identifiers. Counts/labels update
+when records change, while all actions still target the original stable ID.

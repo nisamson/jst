@@ -77,9 +77,35 @@ test('validates all kinds, warns without blocking, preserves identity through ki
   await expect(form.getByText(/This activity date is in the future/)).toBeVisible()
   await form.getByRole('button', { name: 'Add activity', exact: true }).click()
   await expect(form).toBeHidden()
-  await expect(detail).toContainText("Example ' employer - Engineer")
+  await expect(detail).toContainText("Employer name: Example ' employer")
+  await expect(detail).toContainText('Job title or reference: Engineer')
+  await expect(detail.getByRole('group', { name: 'Employer', exact: true })).toBeVisible()
+  await expect(detail.getByRole('group', { name: 'Contact', exact: true })).toBeVisible()
   await expect(detail).toContainText('Conference chat')
-  const recordId = (await detail.locator('p').filter({ hasText: /^Record ID:/ }).innerText()).replace('Record ID: ', '')
+  const idText = detail.locator('p').filter({ hasText: /^Record ID:/ })
+  await expect(idText).toBeHidden()
+  const recordId = (await idText.textContent())!.replace('Record ID: ', '')
+  await detail.locator('summary').click()
+  await expect(idText).toBeVisible()
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true, value: async (value: string) => {
+        Object.defineProperty(window, 'copiedRecordId', { configurable: true, value })
+      },
+    })
+  })
+  await detail.getByRole('button', { name: 'Copy ID', exact: true }).click()
+  await expect(detail.getByRole('status')).toHaveText('ID copied.')
+  expect(await page.evaluate(() => Reflect.get(window, 'copiedRecordId'))).toBe(recordId)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true, value: async () => { throw new Error('Clipboard unavailable') },
+    })
+  })
+  await detail.getByRole('button', { name: 'Copy ID', exact: true }).click()
+  await expect(detail.getByRole('status')).toContainText('Could not copy.')
+  await detail.locator('summary').click()
+  await expect(idText).toBeHidden()
   const creationTime = await detail.locator('time').nth(1).getAttribute('dateTime')
   await expect(detail.locator('time').nth(2)).toHaveAttribute('dateTime', creationTime!)
 
@@ -107,7 +133,7 @@ test('validates all kinds, warns without blocking, preserves identity through ki
   await expect(detail.locator('plain')).toHaveCount(0)
 
   await page.reload()
-  await activities.getByRole('button', { name: new RegExp(`record ${recordId}$`) }).click()
+  await activities.locator(`button[data-record-id="${recordId}"]`).click()
   await expect(detail).toContainText('Workshop\nSecond line <plain text>')
   await detail.getByRole('button', { name: 'Edit activity', exact: true }).click()
   form = page.getByRole('dialog', { name: 'Edit activity', exact: true })
@@ -122,7 +148,10 @@ test('validates all kinds, warns without blocking, preserves identity through ki
   await addOther(page, 'Practice interview')
   const entries = activities.getByRole('listitem')
   await expect(entries).toHaveCount(2)
-  await activities.getByRole('button', { name: new RegExp(`record ${recordId}$`) }).click()
+  await expect(activities.getByRole('button', { name: /Practice interview, 2099-01-02, Other activity, Entry 1$/ })).toBeVisible()
+  await expect(activities.getByRole('button', { name: /Practice interview, 2099-01-02, Other activity, Entry 2$/ })).toBeVisible()
+  await expect(activities.getByRole('list')).not.toContainText(recordId)
+  await activities.locator(`button[data-record-id="${recordId}"]`).click()
   await detail.getByRole('button', { name: 'Edit activity', exact: true }).click()
   form = page.getByRole('dialog', { name: 'Edit activity', exact: true })
   await form.getByRole('textbox', { name: 'Activity description', exact: true }).fill('Discarded edit')
@@ -133,6 +162,10 @@ test('validates all kinds, warns without blocking, preserves identity through ki
   await expect(confirmation).toContainText('Practice interview')
   await expect(confirmation).toContainText('2099-01-02')
   await expect(confirmation).toContainText(recordId)
+  await expect(confirmation.locator('p').filter({ hasText: /^Record ID:/ })).toBeHidden()
+  await confirmation.locator('summary').click()
+  await expect(confirmation.locator('p').filter({ hasText: /^Record ID:/ })).toBeVisible()
+  await expect(confirmation).toContainText('Entry')
   await expect(confirmation).toContainText('There is no undo.')
   await expect(confirmation.getByRole('textbox')).toHaveCount(0)
   await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -143,7 +176,7 @@ test('validates all kinds, warns without blocking, preserves identity through ki
   await expect(entries).toHaveCount(1)
   await page.reload()
   await expect(entries).toHaveCount(1)
-  await expect(activities.getByRole('button', { name: new RegExp(`record ${recordId}$`) })).toHaveCount(0)
+  await expect(activities.locator(`button[data-record-id="${recordId}"]`)).toHaveCount(0)
 })
 
 test('keeps activities scoped to the claim/profile and viewable but not writable in read-only mode', async ({ page }) => {

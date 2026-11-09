@@ -1,5 +1,6 @@
 import { Badge, Button, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import type { Claim } from '../storage/claims'
+import RecordTechnicalDetails from './RecordTechnicalDetails'
 
 export default function ClaimOverview({
   claim,
@@ -20,7 +21,6 @@ export default function ClaimOverview({
           <Badge variant="light">Selected claim</Badge>
         </Group>
         <Text size="lg"><strong>Claim identifier:</strong> {claim.identifier}</Text>
-        <Text size="sm" c="dimmed"><strong>Record ID:</strong> {claim.id}</Text>
         <Text>
           <strong>Record created:</strong>{' '}
           <time dateTime={claim.createdAt}>
@@ -42,6 +42,7 @@ export default function ClaimOverview({
             {claim.overview ?? 'No overview provided.'}
           </Text>
         </Stack>
+        <RecordTechnicalDetails key={claim.id} recordId={claim.id} />
         {onDelete && (
           <Group mt="sm">
             {onEdit && <Button variant="light" disabled={!canDelete} onClick={onEdit}>Edit claim</Button>}

@@ -238,12 +238,14 @@ test('deletes only the selected claim when identifiers are duplicated', async ({
     }
   }, profileId)
   await page.goto(`/claims?profile=${profileId}&claim=duplicate-claim-id`)
-  const duplicate = page.getByRole('button', { name: 'Claim 2026, record duplicate-claim-id', exact: true })
-  const original = page.getByRole('button', { name: 'Claim 2026, record claim-newer', exact: true })
+  const duplicate = page.getByRole('button', { name: 'Claim 2026, Entry 2', exact: true })
+  const original = page.getByRole('button', { name: 'Claim 2026, Entry 1', exact: true })
   await expect(duplicate).toHaveAttribute('aria-pressed', 'true')
   await expect(original).toHaveAttribute('aria-pressed', 'false')
-  await expect(duplicate).toContainText('Record ID: duplicate-claim-id')
-  await expect(original).toContainText('Record ID: claim-newer')
+  await expect(duplicate).not.toContainText('duplicate-claim-id')
+  await expect(original).not.toContainText('claim-newer')
+  await expect(duplicate).toContainText('Created:')
+  await expect(original).toContainText('Start date:')
   await original.focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=claim-newer$`))
@@ -253,9 +255,17 @@ test('deletes only the selected claim when identifiers are duplicated', async ({
   await expect(page).toHaveURL(new RegExp(`profile=${profileId}&claim=duplicate-claim-id$`))
   await page.reload()
   await expect(page.getByText('Claim identifier: Claim 2026')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Claim 2026 overview', exact: true })).toContainText('Record ID: duplicate-claim-id')
+  const detail = page.getByRole('region', { name: 'Claim 2026 overview', exact: true })
+  await expect(detail.getByText('Record ID: duplicate-claim-id', { exact: true })).toBeHidden()
+  await detail.locator('summary').click()
+  await expect(detail.getByText('Record ID: duplicate-claim-id', { exact: true })).toBeVisible()
+  await original.click()
+  await expect(detail.getByText('Record ID: claim-newer', { exact: true })).toBeHidden()
+  await duplicate.click()
   await page.getByRole('button', { name: 'Delete claim', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Delete claim?' })
+  await expect(dialog.getByText('Record ID: duplicate-claim-id', { exact: true })).toBeHidden()
+  await expect(dialog).toContainText('Entry 2')
   await dialog.getByRole('textbox', { name: 'Type claim name to confirm' }).fill('Claim 2026')
   await dialog.getByRole('button', { name: 'Delete claim' }).click()
   await expect(dialog).toBeHidden()
@@ -505,8 +515,38 @@ test('local developer controls add and remove persistent dummy claims without so
   await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
   const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
   await expect(navigation.getByRole('button')).toHaveCount(4)
+  const weeks = page.getByRole('navigation', { name: 'Activity weeks', exact: true })
+  await expect(weeks).toContainText('4 weeks, 2 empty')
+  await expect(weeks.getByRole('button', { name: 'Week 2026-01-18 to 2026-01-24, 1 activity', exact: true })).toBeVisible()
+  await weeks.getByRole('button', { name: 'Week 2025-12-28 to 2026-01-03, 4 activities', exact: true }).click()
+  const activities = page.getByRole('list', { name: 'Activities in selected week', exact: true })
+  await expect(activities.getByRole('listitem')).toHaveCount(4)
+  await expect(activities).toContainText('WorkSource activity')
+  await expect(activities).toContainText('Other activity')
+  await expect(activities).toContainText('Employer contact')
+  for (const buttons of [
+    activities.getByRole('button'),
+    weeks.getByRole('button', { name: /^Week / }),
+  ]) {
+    const offsets = await buttons.evaluateAll((elements) => elements.map((element) => {
+      const label = element.querySelector('.mantine-Button-label')!
+      return label.getBoundingClientRect().left - element.getBoundingClientRect().left
+    }))
+    expect(offsets.every((offset) => offset > 0 && offset < 30)).toBe(true)
+  }
+  await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
+  await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
+  await expect(weeks).toContainText('4 weeks, 2 empty')
+  await weeks.getByRole('button', { name: 'Week 2025-12-28 to 2026-01-03, 4 activities', exact: true }).click()
+  await expect(activities.getByRole('listitem')).toHaveCount(4)
+  await navigation.getByRole('button', { name: /^Dummy long identifier/ }).click()
+  await expect(page.getByText('No activities yet.', { exact: false })).toBeVisible()
+  await expect(weeks).toHaveCount(0)
+  await navigation.locator('button[data-record-id="developer-dummy-claim-duplicate"]').click()
+  await expect(weeks).toContainText('4 weeks, 2 empty')
   await page.reload()
   await expect(navigation.getByRole('button')).toHaveCount(4)
+  await expect(weeks).toContainText('4 weeks, 2 empty')
   await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
   await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
   await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
@@ -534,7 +574,7 @@ test('developer dummy claims persist, remain profile-scoped, and can be removed 
   await tools.getByRole('button', { name: 'Add dummy claims', exact: true }).click()
   await expect(tools.getByRole('status')).toHaveText('Dummy claims are ready.')
   await expect(navigation.getByRole('button')).toHaveCount(6)
-  await navigation.getByRole('button', { name: 'Dummy claim 2026, record developer-dummy-claim-duplicate', exact: true }).click()
+  await navigation.locator('button[data-record-id="developer-dummy-claim-duplicate"]').click()
   await page.reload()
   await expect(page.getByRole('region', { name: 'Dummy claim 2026 overview', exact: true })).toContainText('Record ID: developer-dummy-claim-duplicate')
 
@@ -547,7 +587,7 @@ test('developer dummy claims persist, remain profile-scoped, and can be removed 
 
   await page.getByRole('button', { name: 'Switch profile', exact: true }).click()
   await page.getByRole('button', { name: 'Dummy tools one profile', exact: true }).click()
-  await navigation.getByRole('button', { name: 'Dummy claim 2026, record developer-dummy-claim-duplicate', exact: true }).click()
+  await navigation.locator('button[data-record-id="developer-dummy-claim-duplicate"]').click()
   await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
   await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
   await expect(page).toHaveURL(new RegExp(`/claims\\?profile=${profileId}$`))
@@ -576,8 +616,8 @@ test('developer dummy claim changes roll back on failure and allow retry', async
     const session = await storage.openProfile(id)
     try {
       await session.execute(`
-        CREATE TRIGGER reject_dummy_insert BEFORE INSERT ON claims
-        WHEN NEW.id = 'developer-dummy-claim-duplicate'
+        CREATE TRIGGER reject_dummy_insert AFTER INSERT ON activities
+        WHEN NEW.id = 'dededede-0000-4000-8000-000000000102'
         BEGIN SELECT RAISE(FAIL, 'Dummy insertion failed'); END
       `)
     } finally {
@@ -596,6 +636,8 @@ test('developer dummy claim changes roll back on failure and allow retry', async
     try {
       const rows = await session.execute('SELECT id FROM claims')
       if (rows.length !== 2) throw new Error('Failed insertion left partial dummy data.')
+      const activities = await session.execute('SELECT id FROM activities')
+      if (activities.length) throw new Error('Failed insertion left partial dummy activities.')
       await session.execute('DROP TRIGGER reject_dummy_insert')
     } finally {
       await session.dispose()
@@ -629,6 +671,8 @@ test('developer dummy claim changes roll back on failure and allow retry', async
     try {
       const rows = await session.execute('SELECT id FROM claims')
       if (rows.length !== 6) throw new Error('Failed removal deleted part of the dummy data.')
+      const activities = await session.execute('SELECT id FROM activities')
+      if (activities.length !== 15) throw new Error('Failed removal deleted part of the dummy activities.')
       await session.execute('DROP TRIGGER reject_dummy_delete')
     } finally {
       await session.dispose()
@@ -637,4 +681,11 @@ test('developer dummy claim changes roll back on failure and allow retry', async
   await tools.getByRole('button', { name: 'Remove dummy claims', exact: true }).click()
   await expect(tools.getByRole('status')).toContainText('Other claims were left unchanged.')
   await expect(page.getByRole('navigation', { name: 'Claims', exact: true }).getByRole('button')).toHaveCount(2)
+  const remainingActivities = await page.evaluate(async (id) => {
+    const modulePath = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(modulePath)
+    const session = await storage.openProfile(id)
+    try { return await session.execute('SELECT id FROM activities') } finally { await session.dispose() }
+  }, profileId)
+  expect(remainingActivities).toEqual([])
 })

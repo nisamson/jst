@@ -1,5 +1,6 @@
 import { Badge, Button, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import type { Claim } from '../storage/claims'
+import { claimSelectionLabel } from './record-labels'
 
 export default function ClaimSidebar({
   claims,
@@ -30,17 +31,18 @@ export default function ClaimSidebar({
                   py="sm"
                   justify="flex-start"
                   variant={claim.id === selectedClaimId ? 'filled' : 'light'}
-                  aria-label={duplicate ? `${claim.identifier}, record ${claim.id}` : claim.identifier}
+                  aria-label={claimSelectionLabel(claim, claims)}
+                  data-record-id={claim.id}
                   aria-describedby={descriptionId}
                   aria-pressed={claim.id === selectedClaimId}
                   styles={{ label: { whiteSpace: 'normal', textAlign: 'left', overflowWrap: 'anywhere', minWidth: 0 } }}
                   onClick={() => onSelect(claim)}
                 >
                   <Stack component="span" gap={4}>
-                    <Text component="span" fw={600}>{claim.identifier}</Text>
+                    <Text component="span" fw={600}>{claimSelectionLabel(claim, claims)}</Text>
                     <Text component="span" id={descriptionId} size="xs">
                       Start date: {claim.claimStartDate ?? 'Not provided'}
-                      {duplicate && <Text component="span" inherit display="block">Record ID: {claim.id}</Text>}
+                      {duplicate && <Text component="span" inherit display="block">Created: {new Date(claim.createdAt).toLocaleDateString()}</Text>}
                     </Text>
                   </Stack>
                 </Button>

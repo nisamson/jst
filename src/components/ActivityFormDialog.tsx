@@ -6,14 +6,15 @@ import type { Activity, ActivityInput, ActivityKind } from '../storage/activity-
 import { employerFields, worksourceFields } from './activity-fields'
 
 export default function ActivityFormDialog({
-  activity, readOnly, onSave, onClose,
+  activity, initialDate, readOnly, onSave, onClose,
 }: {
   activity?: Activity
+  initialDate?: string
   readOnly: boolean
   onSave: (input: ActivityInput) => Promise<void>
   onClose: () => void
 }) {
-  const [input, setInput] = useState<ActivityInput>(activity ?? { kind: 'employer_contact', activity_date: localCalendarDate() })
+  const [input, setInput] = useState<ActivityInput>(activity ?? { kind: 'employer_contact', activity_date: initialDate ?? localCalendarDate() })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const busy = useRef(false)

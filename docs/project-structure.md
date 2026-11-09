@@ -32,9 +32,13 @@ navigation inside the `StorageStatus` capability boundary.
   `ClaimsWorkspace` composes profile access context, `ClaimSidebar` navigation,
   `ClaimOverview` details, `ClaimFormDialog` create/edit forms, empty/stale states,
   and confirmed deletion.
-- `ClaimActivities` owns selected-claim activity loading/retries, list selection,
-  and mutation state. It composes `ActivityDetails`, `ActivityFormDialog`, and
+- `ClaimActivities` owns selected-claim activity loading/retries, week/record
+  selection, and mutation state. It composes `ActivityWeekNavigator` (paged
+  overview with gaps), `ActivityWeekControls` (week/date navigation),
+  `ActivityList`, `ActivityDetails`, `ActivityFormDialog`, and
   `DeleteActivityDialog`, keyed by profile and claim to prevent stale content.
+- `src/storage/activity-weeks.ts` derives date-only Sunday–Saturday weeks and
+  activity groups without persisting weeks or allocating empty history entries.
 - `src/storage/activity-model.ts` defines activity types, normalization,
   validation, labels, and non-blocking local-calendar/evidence warnings.
   `src/storage/activities.ts` implements claim-scoped reads and transactional
@@ -75,6 +79,10 @@ See the README for browser setup and platform-specific validation details.
 Activity coverage lives in `src/storage/activities.test.ts` and
 `tests/browser/activity-lifecycle.spec.ts`; schema/migration and claim-cascade
 regressions remain in `activity-schema.spec.ts` and `claim-lifecycle.spec.ts`.
+Week derivation tests are in `src/storage/activity-weeks.test.ts`; weekly
+navigation, gaps, boundaries, and date-edit behavior are covered by
+`tests/browser/weekly-activities.spec.ts` in Chromium/Firefox development and
+production-preview projects.
 
 ## Manual claims testing
 
@@ -83,8 +91,16 @@ With `npm run dev`, or `npm run build` followed by `npm run preview` on
 **Add dummy claims** inserts a repeatable set of four real,
 profile-scoped SQLite records (duplicates, optional dates, and a long label).
 They survive reload and can also be deleted individually through the normal UI.
+Three dummy claims each include five activities covering employer contacts,
+WorkSource, and other activities, with a year-boundary week and two empty gap
+weeks. The long-name claim starts empty. Activity fixtures use reserved
+`dededede-0000-4000-8000-*` UUIDs; adding again restores missing fixtures without
+duplicating or overwriting existing fixture edits. Successful fixture changes
+refresh the selected claim's activity view immediately.
 **Remove dummy claims** deletes only the four reserved `developer-dummy-claim-*`
-record IDs owned by these tools, without confirmation; other claims are retained.
+record IDs owned by these tools and all their activities, without confirmation;
+this includes activities manually added to dummy claims. Other claims and their
+activities are retained.
 Both operations are transactional, and failures leave existing records unchanged.
 
 These controls respect read-only access. If disabled, return to profiles, use

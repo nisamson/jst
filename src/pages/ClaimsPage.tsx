@@ -69,6 +69,7 @@ function ClaimsOverview({
   onNavigate: (path: string) => void
 }) {
   const [profileState, setProfileState] = useState<ProfileState>({ state: 'loading' })
+  const [dummyRevision, setDummyRevision] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -150,6 +151,7 @@ function ClaimsOverview({
     const tools = await import('../storage/developer-claims')
     const claims = await tools.changeDummyClaims(profileId, action)
     setProfileState((current) => current.state === 'loaded' ? { ...current, claims } : current)
+    setDummyRevision((value) => value + 1)
     if (action === 'remove' && claimId && profileState.state === 'loaded'
       && profileState.claims.some((claim) => claim.id === claimId)
       && !claims.some((claim) => claim.id === claimId)) {
@@ -204,6 +206,7 @@ function ClaimsOverview({
 
         {profileState.state === 'loaded' && (
           <ClaimsWorkspace
+            key={dummyRevision}
             profile={profileState.profile}
             access={profileState.access}
             claims={profileState.claims}
