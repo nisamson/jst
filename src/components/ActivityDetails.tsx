@@ -6,6 +6,7 @@ import { employerFields, worksourceFields } from './activity-fields'
 import RecordTechnicalDetails from './RecordTechnicalDetails'
 import EvidenceDetails from './EvidenceDetails'
 import { emptyEvidence } from '../storage/evidence-model'
+import MobileSectionDisclosure from './MobileSectionDisclosure'
 
 export default function ActivityDetails({ activity, profileId, claimId, readOnly, onEdit, onDelete }: {
   activity: Activity
@@ -22,44 +23,50 @@ export default function ActivityDetails({ activity, profileId, claimId, readOnly
           <Title id="activity-details-heading" order={3}>Activity details</Title>
           <Badge variant="light">{activityKinds.find((kind) => kind.value === activity.kind)?.label}</Badge>
         </Group>
-        <DetailField label="Activity date"><time dateTime={activity.activity_date}>{activity.activity_date}</time></DetailField>
-        {activity.kind === 'employer_contact' ? (
-          <>
-            <Fieldset legend="Employer">
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                {employerFields.map(({ field, label }) => (
-                  <DetailField key={field} label={label}>{activity[field]}</DetailField>
-                ))}
-              </SimpleGrid>
-            </Fieldset>
-            <Fieldset legend="Contact">
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                <DetailField label="Contact method">{contactMethods.find((item) => item.value === activity.contact_method)?.label}</DetailField>
-                <DetailField label="Contact type">{contactTypes.find((item) => item.value === activity.contact_type)?.label}</DetailField>
-                {activity.contact_method === 'other' && <DetailField label="Other contact method">{activity.contact_method_other}</DetailField>}
-              </SimpleGrid>
-            </Fieldset>
-          </>
-        ) : (
-          <>
-            <DetailField label="Activity description">{activity.activity_description}</DetailField>
-            <DetailField label="Documentation description">{activity.documentation_description}</DetailField>
-            {activity.kind === 'worksource_activity' && (
-              <Fieldset legend="WorkSource location">
-                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                  {worksourceFields.map(({ field, label }) => <DetailField key={field} label={label}>{activity[field]}</DetailField>)}
-                </SimpleGrid>
-              </Fieldset>
+        <MobileSectionDisclosure key={activity.id} label="activity details" initiallyExpanded
+          summary={`${activity.activity_date}: ${activity.kind === 'employer_contact'
+            ? `${activity.job_title_or_reference} at ${activity.employer_name}` : activity.activity_description}`}>
+          <Stack gap="sm">
+            <DetailField label="Activity date"><time dateTime={activity.activity_date}>{activity.activity_date}</time></DetailField>
+            {activity.kind === 'employer_contact' ? (
+              <>
+                <Fieldset legend="Employer">
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                    {employerFields.map(({ field, label }) => (
+                      <DetailField key={field} label={label}>{activity[field]}</DetailField>
+                    ))}
+                  </SimpleGrid>
+                </Fieldset>
+                <Fieldset legend="Contact">
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                    <DetailField label="Contact method">{contactMethods.find((item) => item.value === activity.contact_method)?.label}</DetailField>
+                    <DetailField label="Contact type">{contactTypes.find((item) => item.value === activity.contact_type)?.label}</DetailField>
+                    {activity.contact_method === 'other' && <DetailField label="Other contact method">{activity.contact_method_other}</DetailField>}
+                  </SimpleGrid>
+                </Fieldset>
+              </>
+            ) : (
+              <>
+                <DetailField label="Activity description">{activity.activity_description}</DetailField>
+                <DetailField label="Documentation description">{activity.documentation_description}</DetailField>
+                {activity.kind === 'worksource_activity' && (
+                  <Fieldset legend="WorkSource location">
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                      {worksourceFields.map(({ field, label }) => <DetailField key={field} label={label}>{activity[field]}</DetailField>)}
+                    </SimpleGrid>
+                  </Fieldset>
+                )}
+              </>
             )}
-          </>
-        )}
-        <EvidenceDetails key={`${activity.id}-${activity.updated_at}`} evidence={activity.evidence ?? emptyEvidence()}
-          profileId={profileId} claimId={claimId} activityId={activity.id} />
-        {activityWarnings(activity, undefined, activity.evidence).map((warning) => <Text key={warning} size="sm" c="dimmed">{warning}</Text>)}
-        <Divider label="Record information" labelPosition="left" />
-        <Text size="sm"><strong>Created:</strong> <time dateTime={activity.created_at}>{new Date(activity.created_at).toLocaleString()}</time></Text>
-        <Text size="sm"><strong>Last edited:</strong> <time dateTime={activity.updated_at}>{new Date(activity.updated_at).toLocaleString()}</time></Text>
-        <RecordTechnicalDetails key={activity.id} recordId={activity.id} />
+            <EvidenceDetails key={`${activity.id}-${activity.updated_at}`} evidence={activity.evidence ?? emptyEvidence()}
+              profileId={profileId} claimId={claimId} activityId={activity.id} />
+            {activityWarnings(activity, undefined, activity.evidence).map((warning) => <Text key={warning} size="sm" c="dimmed">{warning}</Text>)}
+            <Divider label="Record information" labelPosition="left" />
+            <Text size="sm"><strong>Created:</strong> <time dateTime={activity.created_at}>{new Date(activity.created_at).toLocaleString()}</time></Text>
+            <Text size="sm"><strong>Last edited:</strong> <time dateTime={activity.updated_at}>{new Date(activity.updated_at).toLocaleString()}</time></Text>
+            <RecordTechnicalDetails key={activity.id} recordId={activity.id} />
+          </Stack>
+        </MobileSectionDisclosure>
         <Group>
           <Button variant="light" disabled={readOnly} onClick={onEdit}>Edit activity</Button>
           <Button variant="light" color="red" disabled={readOnly} onClick={onDelete}>Delete activity</Button>

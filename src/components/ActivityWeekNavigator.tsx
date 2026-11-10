@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, Group, Paper, Stack, Switch, Text, Title } from '@mantine/core'
 import { weekDisplayLabel, weekRangeLabel } from '../storage/activity-weeks'
 import type { ActivityWeeks } from '../storage/activity-weeks'
+import MobileSectionDisclosure from './MobileSectionDisclosure'
 
 const weeksPerPage = 12
 
@@ -22,6 +23,7 @@ export default function ActivityWeekNavigator({ weeks, selectedWeek, onSelect }:
   const page = browsing?.selectedWeek === selectedWeek && browsing.newest === newest
     ? Math.min(browsing.page, totalPages - 1) : selectedPage
   const firstIndex = page * weeksPerPage
+  const selectedCount = groups.get(selectedWeek)?.length ?? 0
   const visibleWeeks = newest === undefined ? []
     : hideEmpty ? recordedWeeks.slice(firstIndex, firstIndex + weeksPerPage)
       : Array.from({ length: Math.min(weeksPerPage, totalWeeks - firstIndex) }, (_, index) => newest - (firstIndex + index) * 7)
@@ -34,37 +36,42 @@ export default function ActivityWeekNavigator({ weeks, selectedWeek, onSelect }:
         <Title order={3}>Week overview</Title>
         {newest === undefined ? <Text size="sm">No recorded activity weeks yet.</Text> : (
           <>
-            <Text size="sm">{totalWeeks} {totalWeeks === 1 ? 'week' : 'weeks'}, {totalWeeks - groups.size} empty</Text>
-            <Switch label="Hide empty weeks" checked={hideEmpty} onChange={(event) => {
-              setHideEmpty(event.currentTarget.checked)
-              setBrowsing(undefined)
-            }} />
-            {hideEmpty && !groups.has(selectedWeek) && <Text size="sm">The selected week has no activities and is hidden from this overview.</Text>}
-            {totalPages > 1 && <Text size="xs">Showing weeks {firstIndex + 1}-{Math.min(firstIndex + weeksPerPage, shownWeeks)} of {shownWeeks}, newest first</Text>}
-            <Stack gap="xs">
-              {visibleWeeks.map((week) => {
-                const count = groups.get(week)?.length ?? 0
-                const label = weekRangeLabel(week)
-                return (
-                  <Button key={week} fullWidth h="auto" py="sm" justify="flex-start" variant={week === selectedWeek ? 'filled' : 'light'}
-                    aria-label={`Week ${label}, ${count ? `${count} ${count === 1 ? 'activity' : 'activities'}` : 'No activities recorded'}`}
-                    aria-pressed={week === selectedWeek} onClick={() => onSelect(week)}
-                    styles={{ label: { whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' } }}>
-                    <Stack component="span" gap={4}>
-                      <Text component="span" size="sm">{weekDisplayLabel(week)}</Text>
-                      <Text component="span" size="xs" c={count || week === selectedWeek ? undefined : 'dimmed'}>{count ? `${count} ${count === 1 ? 'activity' : 'activities'}` : 'No activities'}</Text>
-                    </Stack>
-                  </Button>
-                )
-              })}
-            </Stack>
-            {totalPages > 1 && (
-              <Group gap="xs">
-                <Button size="xs" variant="default" disabled={page === 0} onClick={() => browse(page - 1)}>Newer weeks</Button>
-                <Button size="xs" variant="default" disabled={page >= totalPages - 1} onClick={() => browse(page + 1)}>Older weeks</Button>
-                {page !== selectedPage && <Button size="xs" variant="subtle" onClick={() => setBrowsing(undefined)}>Show selected week</Button>}
-              </Group>
-            )}
+            <MobileSectionDisclosure label="weeks"
+              summary={`Selected: ${weekDisplayLabel(selectedWeek)}, ${selectedCount} ${selectedCount === 1 ? 'activity' : 'activities'}`}>
+              <Stack gap="sm">
+                <Text size="sm">{totalWeeks} {totalWeeks === 1 ? 'week' : 'weeks'}, {totalWeeks - groups.size} empty</Text>
+                <Switch label="Hide empty weeks" checked={hideEmpty} onChange={(event) => {
+                  setHideEmpty(event.currentTarget.checked)
+                  setBrowsing(undefined)
+                }} />
+                {hideEmpty && !groups.has(selectedWeek) && <Text size="sm">The selected week has no activities and is hidden from this overview.</Text>}
+                {totalPages > 1 && <Text size="xs">Showing weeks {firstIndex + 1}-{Math.min(firstIndex + weeksPerPage, shownWeeks)} of {shownWeeks}, newest first</Text>}
+                <Stack gap="xs">
+                  {visibleWeeks.map((week) => {
+                    const count = groups.get(week)?.length ?? 0
+                    const label = weekRangeLabel(week)
+                    return (
+                      <Button key={week} fullWidth h="auto" py="sm" justify="flex-start" variant={week === selectedWeek ? 'filled' : 'light'}
+                        aria-label={`Week ${label}, ${count ? `${count} ${count === 1 ? 'activity' : 'activities'}` : 'No activities recorded'}`}
+                        aria-pressed={week === selectedWeek} onClick={() => onSelect(week)}
+                        styles={{ label: { whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' } }}>
+                        <Stack component="span" gap={4}>
+                          <Text component="span" size="sm">{weekDisplayLabel(week)}</Text>
+                          <Text component="span" size="xs" c={count || week === selectedWeek ? undefined : 'dimmed'}>{count ? `${count} ${count === 1 ? 'activity' : 'activities'}` : 'No activities'}</Text>
+                        </Stack>
+                      </Button>
+                    )
+                  })}
+                </Stack>
+                {totalPages > 1 && (
+                  <Group gap="xs">
+                    <Button size="xs" variant="default" disabled={page === 0} onClick={() => browse(page - 1)}>Newer weeks</Button>
+                    <Button size="xs" variant="default" disabled={page >= totalPages - 1} onClick={() => browse(page + 1)}>Older weeks</Button>
+                    {page !== selectedPage && <Button size="xs" variant="subtle" onClick={() => setBrowsing(undefined)}>Show selected week</Button>}
+                  </Group>
+                )}
+              </Stack>
+            </MobileSectionDisclosure>
           </>
         )}
       </Stack>
