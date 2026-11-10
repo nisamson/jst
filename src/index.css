@@ -14,3 +14,9 @@ body {
 #root {
   min-height: 100vh;
 }
+
+@media (max-width: 47.99375em) {
+  .mobile-disclosure-content[data-collapsed='true'] {
+    display: none;
+  }
+}

@@ -32,6 +32,11 @@ navigation inside the `StorageStatus` capability boundary.
   `ClaimsWorkspace` composes profile access context, `ClaimSidebar` navigation,
   `ClaimOverview` details, `ClaimFormDialog` create/edit forms, empty/stale states,
   and confirmed deletion.
+- `MobileSectionDisclosure` keeps claim navigation, claim overview, and week
+  navigation compact below Mantine's `sm` breakpoint (48em). Activity details
+  initially expand after selection and can also collapse. Summaries and record
+  actions remain visible; contents stay mounted to retain navigation and form
+  state. Desktop always displays section contents.
 - `ClaimActivities` owns selected-claim activity loading/retries, week/record
   selection, and mutation state. It composes `ActivityWeekNavigator` (paged
   overview with gaps), `ActivityWeekControls` (week/date navigation),
@@ -89,6 +94,8 @@ Week derivation tests are in `src/storage/activity-weeks.test.ts`; weekly
 navigation, gaps, boundaries, and date-edit behavior are covered by
 `tests/browser/weekly-activities.spec.ts` in Chromium/Firefox development and
 production-preview projects.
+Responsive collapse defaults, summaries, keyboard controls, resize focus, and
+pending form preservation are also covered in `weekly-activities.spec.ts`.
 Evidence policy/service tests are in `src/storage/evidence-model.test.ts` and
 `evidence.test.ts`; browser UI/download/cancellation/retry coverage lives in
 `tests/browser/activity-evidence.spec.ts`. Real SQLite migration, ownership,
