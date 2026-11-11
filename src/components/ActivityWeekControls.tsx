@@ -4,6 +4,7 @@ import { Box, Button, Group, Stack, Text, TextInput } from '@mantine/core'
 import { localCalendarDate } from '../storage/activity-model'
 import { activityWeekStart, firstActivityWeek, lastActivityWeek, weekInputDate } from '../storage/activity-weeks'
 import { isCalendarDate } from '../storage/calendar-date'
+import { IconCalendar, IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 
 export default function ActivityWeekControls({ week, onSelect, children }: {
   week: number
@@ -15,10 +16,10 @@ export default function ActivityWeekControls({ week, onSelect, children }: {
       <Group justify="space-between" gap="sm">
         {children}
         <Group gap="xs">
-        <Button size="compact-sm" variant="default" disabled={week <= firstActivityWeek} onClick={() => onSelect(week - 7)}>Previous week</Button>
-        <Button size="compact-sm" variant="default" disabled={week >= lastActivityWeek} onClick={() => onSelect(week + 7)}>Next week</Button>
+        <Button leftSection={<IconChevronLeft size={14} aria-hidden />} size="compact-sm" variant="default" disabled={week <= firstActivityWeek} onClick={() => onSelect(week - 7)}>Previous week</Button>
+        <Button rightSection={<IconChevronRight size={14} aria-hidden />} size="compact-sm" variant="default" disabled={week >= lastActivityWeek} onClick={() => onSelect(week + 7)}>Next week</Button>
         {week !== activityWeekStart(localCalendarDate()) && (
-          <Button size="compact-sm" variant="subtle" onClick={() => onSelect(activityWeekStart(localCalendarDate()))}>Current week</Button>
+          <Button leftSection={<IconCalendar size={14} aria-hidden />} size="compact-sm" variant="subtle" onClick={() => onSelect(activityWeekStart(localCalendarDate()))}>Current week</Button>
         )}
         </Group>
       </Group>
@@ -47,7 +48,7 @@ function WeekJumpForm({ week, onSelect }: { week: number; onSelect: (week: numbe
       <Group align="flex-end" gap="xs">
         <TextInput ref={input} label="Jump to week containing" type="date" required min="0001-01-01" max="9999-12-31"
           value={date} error={error} onChange={(event) => setDate(event.currentTarget.value)} />
-        <Button variant="default" type="submit">Go to week</Button>
+        <Button leftSection={<IconCalendar size={16} aria-hidden />} variant="default" type="submit">Go to week</Button>
       </Group>
       <Text size="xs" c="dimmed" mt={4}>Choose any date in the week. Empty weeks can also be opened.</Text>
     </form>

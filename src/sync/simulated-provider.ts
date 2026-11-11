@@ -15,8 +15,8 @@ interface SimulatedProviderDependencies {
 const defaultDependencies: SimulatedProviderDependencies = {
   async listCloudProfiles() {
     return [
-      { id: 'simulated-cloud-profile-1', label: 'Simulated cloud profile 1' },
-      { id: 'simulated-cloud-profile-2', label: 'Simulated cloud profile 2' },
+      { id: 'simulated-cloud-profile-1', label: 'Example profile 1' },
+      { id: 'simulated-cloud-profile-2', label: 'Example profile 2' },
     ]
   },
   async connect() {

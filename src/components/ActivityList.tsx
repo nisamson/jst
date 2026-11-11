@@ -2,23 +2,26 @@ import { Button, Stack, Text } from '@mantine/core'
 import { activityKinds, activityTitle } from '../storage/activity-model'
 import type { Activity } from '../storage/activity-model'
 import { activitySelectionLabel } from './record-labels'
+import { IconBriefcase, IconBuilding, IconFileText } from '@tabler/icons-react'
 
 export default function ActivityList({ activities, selectedId, onSelect, label = 'Activities in selected week' }: {
   activities: Activity[]
   selectedId?: string
-  onSelect: (id: string) => void
+  onSelect: (id: string | undefined) => void
   label?: string
 }) {
   return (
     <Stack component="ul" aria-label={label} gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
       {activities.map((activity) => (
         <li key={activity.id}>
-          <Button fullWidth h="auto" py="sm" justify="flex-start" variant={activity.id === selectedId ? 'filled' : 'light'}
+          <Button leftSection={activity.kind === 'employer_contact' ? <IconBriefcase size={16} aria-hidden />
+            : activity.kind === 'worksource_activity' ? <IconBuilding size={16} aria-hidden /> : <IconFileText size={16} aria-hidden />}
+            fullWidth h="auto" py="sm" justify="flex-start" variant={activity.id === selectedId ? 'filled' : 'light'}
             aria-pressed={activity.id === selectedId}
             aria-label={activitySelectionLabel(activity, activities)}
             data-record-id={activity.id}
             styles={{ label: { whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0, textAlign: 'left' } }}
-            onClick={() => onSelect(activity.id)}>
+            onClick={() => onSelect(activity.id === selectedId ? undefined : activity.id)}>
             <Stack component="span" gap={4}>
               <Text component="span" fw={600}>{activityTitle(activity)}{activitySelectionLabel(activity, activities).match(/, Entry \d+$/)?.[0]}</Text>
               <Text component="span" size="sm">{activity.activity_date} - {activityKinds.find((item) => item.value === activity.kind)?.label}</Text>

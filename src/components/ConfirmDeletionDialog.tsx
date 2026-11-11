@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
 import RecordTechnicalDetails from './RecordTechnicalDetails'
+import { IconTrash } from '@tabler/icons-react'
 
 interface ConfirmDeletionDialogProps {
   itemType: 'profile' | 'claim'
@@ -64,6 +65,7 @@ export default function ConfirmDeletionDialog({
         <Group justify="flex-end">
           <Button variant="default" disabled={deleting} onClick={onClose}>Cancel</Button>
           <Button
+            leftSection={<IconTrash size={16} aria-hidden />}
             color="red"
             disabled={enteredName !== name || deleting}
             loading={deleting}

@@ -7,6 +7,8 @@ import RecordTechnicalDetails from './RecordTechnicalDetails'
 import EvidenceDetails from './EvidenceDetails'
 import { emptyEvidence } from '../storage/evidence-model'
 import MobileSectionDisclosure from './MobileSectionDisclosure'
+import { IconEdit, IconTrash } from '@tabler/icons-react'
+import AdvancedDetails from './AdvancedDetails'
 
 export default function ActivityDetails({ activity, profileId, claimId, readOnly, onEdit, onDelete }: {
   activity: Activity
@@ -17,7 +19,7 @@ export default function ActivityDetails({ activity, profileId, claimId, readOnly
   onDelete: () => void
 }) {
   return (
-    <Paper component="section" aria-labelledby="activity-details-heading" withBorder p="md" radius="md" style={{ overflowWrap: 'anywhere' }}>
+    <Paper component="section" aria-labelledby="activity-details-heading" withBorder px={{ base: 'xs', sm: 'md' }} py="md" radius="md" style={{ overflowWrap: 'anywhere' }}>
       <Stack gap="sm">
         <Group justify="space-between">
           <Title id="activity-details-heading" order={3}>Activity details</Title>
@@ -30,14 +32,14 @@ export default function ActivityDetails({ activity, profileId, claimId, readOnly
             <DetailField label="Activity date"><time dateTime={activity.activity_date}>{activity.activity_date}</time></DetailField>
             {activity.kind === 'employer_contact' ? (
               <>
-                <Fieldset legend="Employer">
+                <Fieldset legend="Employer" px={{ base: 'xs', sm: 'lg' }}>
                   <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                     {employerFields.map(({ field, label }) => (
                       <DetailField key={field} label={label}>{activity[field]}</DetailField>
                     ))}
                   </SimpleGrid>
                 </Fieldset>
-                <Fieldset legend="Contact">
+                <Fieldset legend="Contact" px={{ base: 'xs', sm: 'lg' }}>
                   <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                     <DetailField label="Contact method">{contactMethods.find((item) => item.value === activity.contact_method)?.label}</DetailField>
                     <DetailField label="Contact type">{contactTypes.find((item) => item.value === activity.contact_type)?.label}</DetailField>
@@ -50,7 +52,7 @@ export default function ActivityDetails({ activity, profileId, claimId, readOnly
                 <DetailField label="Activity description">{activity.activity_description}</DetailField>
                 <DetailField label="Documentation description">{activity.documentation_description}</DetailField>
                 {activity.kind === 'worksource_activity' && (
-                  <Fieldset legend="WorkSource location">
+                  <Fieldset legend="WorkSource location" px={{ base: 'xs', sm: 'lg' }}>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                       {worksourceFields.map(({ field, label }) => <DetailField key={field} label={label}>{activity[field]}</DetailField>)}
                     </SimpleGrid>
@@ -61,15 +63,17 @@ export default function ActivityDetails({ activity, profileId, claimId, readOnly
             <EvidenceDetails key={`${activity.id}-${activity.updated_at}`} evidence={activity.evidence ?? emptyEvidence()}
               profileId={profileId} claimId={claimId} activityId={activity.id} />
             {activityWarnings(activity, undefined, activity.evidence).map((warning) => <Text key={warning} size="sm" c="dimmed">{warning}</Text>)}
-            <Divider label="Record information" labelPosition="left" />
-            <Text size="sm"><strong>Created:</strong> <time dateTime={activity.created_at}>{new Date(activity.created_at).toLocaleString()}</time></Text>
-            <Text size="sm"><strong>Last edited:</strong> <time dateTime={activity.updated_at}>{new Date(activity.updated_at).toLocaleString()}</time></Text>
-            <RecordTechnicalDetails key={activity.id} recordId={activity.id} />
+            <AdvancedDetails>
+              <Divider label="Record information" labelPosition="left" />
+              <Text size="sm"><strong>Created:</strong> <time dateTime={activity.created_at}>{new Date(activity.created_at).toLocaleString()}</time></Text>
+              <Text size="sm"><strong>Last edited:</strong> <time dateTime={activity.updated_at}>{new Date(activity.updated_at).toLocaleString()}</time></Text>
+              <RecordTechnicalDetails key={activity.id} recordId={activity.id} />
+            </AdvancedDetails>
           </Stack>
         </MobileSectionDisclosure>
         <Group>
-          <Button variant="light" disabled={readOnly} onClick={onEdit}>Edit activity</Button>
-          <Button variant="light" color="red" disabled={readOnly} onClick={onDelete}>Delete activity</Button>
+          <Button leftSection={<IconEdit size={16} aria-hidden />} variant="light" disabled={readOnly} onClick={onEdit}>Edit activity</Button>
+          <Button leftSection={<IconTrash size={16} aria-hidden />} variant="light" color="red" disabled={readOnly} onClick={onDelete}>Delete activity</Button>
         </Group>
       </Stack>
     </Paper>

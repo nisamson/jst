@@ -192,7 +192,10 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
   expect(second).not.toHaveProperty('realName')
 
   const listing = await repository.listProfiles()
-  expect(listing).toEqual({ profiles: [first, second], errors: [] })
+  expect(listing).toEqual({
+    profiles: [first, second], errors: [],
+    syncStatuses: { [first.id]: { state: 'unconfigured' }, [second.id]: { state: 'unconfigured' } },
+  })
 
   const opened = await repository.openProfile(first.id)
   expect(opened.profile).toEqual(first)
@@ -216,7 +219,21 @@ it('does not overwrite an existing profile when an ID collides', async () => {
   await expect(repository.createProfile({ label: 'Replacement' })).rejects.toThrow(/already exists/)
 
   const listing = await repository.listProfiles()
-  expect(listing).toEqual({ profiles: [existing], errors: [] })
+  expect(listing).toEqual({ profiles: [existing], errors: [], syncStatuses: { [existing.id]: { state: 'unconfigured' } } })
+})
+
+it('keeps profiles visible when their sync setup metadata is invalid', async () => {
+  const { repository } = createHarness()
+  const profile = await repository.createProfile({ label: 'Keep profile' })
+  const database = databases.get(`/profile-${profile.id}.sqlite3`)
+  if (!database) throw new Error('Test profile is missing.')
+  database.syncState = { provider_id: 'invalid', account_label: 'Account', connected_at: '2026-01-01' }
+  const listing = await repository.listProfiles()
+  expect(listing.profiles).toEqual([profile])
+  expect(listing.errors).toEqual([])
+  expect(listing.syncStatuses[profile.id]).toEqual({
+    state: 'error', message: 'The saved sync setup state is invalid.',
+  })
 })
 
 it('deletes only the profile matching the validated ID', async () => {
@@ -229,7 +246,7 @@ it('deletes only the profile matching the validated ID', async () => {
 
   expect(databases.has(`/profile-${first.id}.sqlite3`)).toBe(false)
   expect(databases.get(`/profile-${second.id}.sqlite3`)).toBe(secondDatabase)
-  expect(await repository.listProfiles()).toEqual({ profiles: [second], errors: [] })
+  expect(await repository.listProfiles()).toEqual({ profiles: [second], errors: [], syncStatuses: { [second.id]: { state: 'unconfigured' } } })
   await expect(repository.openProfile(first.id)).rejects.toThrow(/does not exist/)
   await expect(repository.deleteProfile('../other.sqlite3')).rejects.toThrow(/invalid/)
 })
@@ -240,7 +257,7 @@ it('surfaces profile deletion failures without removing the profile', async () =
   failRemove = true
 
   await expect(repository.deleteProfile(profile.id)).rejects.toThrow('The profile database is in use.')
-  expect(await repository.listProfiles()).toEqual({ profiles: [profile], errors: [] })
+  expect(await repository.listProfiles()).toEqual({ profiles: [profile], errors: [], syncStatuses: { [profile.id]: { state: 'unconfigured' } } })
 })
 
 it('reports failed creation and does not expose an incomplete database as a profile', async () => {
@@ -385,7 +402,7 @@ it('blocks profile operations while read-only setup temporarily enables its meta
   const opened = await repository.openProfile(profile.id)
 
   const update = opened.saveSimulatedSyncState('Simulated account', '2026-01-01T00:00:00.000Z')
-  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/simulated setup is being saved/i)
+  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/sync setup is being saved/i)
   await update
   await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/readonly/i)
   await opened.dispose()

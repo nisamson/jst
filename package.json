@@ -17,8 +17,11 @@
     "@mantine/core": "^9.7.5",
     "@mantine/hooks": "^9.7.5",
     "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
+    "@tabler/icons-react": "^3.51.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

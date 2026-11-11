@@ -58,7 +58,12 @@ export interface ProfileDiscoveryError {
 export interface ProfileListing {
   profiles: Profile[]
   errors: ProfileDiscoveryError[]
+  syncStatuses: Record<string, SyncSetupStatus>
 }
+
+export type SyncSetupStatus =
+  | { state: 'configured' | 'unconfigured' }
+  | { state: 'error'; message: string }
 
 interface ProfileDirectoryEntry {
   kind: string
@@ -193,7 +198,7 @@ async function hasSimulatedSyncAccess(storage: StorageSession): Promise<boolean>
     || typeof row.account_label !== 'string'
     || typeof row.connected_at !== 'string'
   ) {
-    throw new Error('The saved simulated setup state is invalid.')
+    throw new Error('The saved sync setup state is invalid.')
   }
   return true
 }
@@ -205,7 +210,7 @@ async function saveSimulatedSyncState(
   connectedAt: string,
 ): Promise<void> {
   if (!accountLabel.trim() || !connectedAt.trim()) {
-    throw new Error('The simulated setup state is invalid.')
+    throw new Error('The sync setup state is invalid.')
   }
   if (readOnly) await storage.execute('PRAGMA query_only = OFF')
 
@@ -232,7 +237,7 @@ async function saveSimulatedSyncState(
         await storage.execute('ROLLBACK')
       } catch (rollbackError) {
         failure = new Error(
-          `Saving simulated setup failed: ${errorMessage(error)} Rollback also failed: ${errorMessage(rollbackError)}`,
+          `Saving sync setup failed: ${errorMessage(error)} Rollback also failed: ${errorMessage(rollbackError)}`,
           { cause: rollbackError },
         )
       }
@@ -245,7 +250,7 @@ async function saveSimulatedSyncState(
     } catch (restoreError) {
       failure = failure
         ? new Error(
-          `Saving simulated setup failed: ${errorMessage(failure)} Read-only protection could not be restored: ${errorMessage(restoreError)}`,
+          `Saving sync setup failed: ${errorMessage(failure)} Read-only protection could not be restored: ${errorMessage(restoreError)}`,
           { cause: restoreError },
         )
         : restoreError
@@ -350,6 +355,7 @@ export function createProfileRepository(
       const directory = await dependencies.getDirectory()
       const profiles: Profile[] = []
       const errors: ProfileDiscoveryError[] = []
+      const syncStatuses: Record<string, SyncSetupStatus> = {}
       for await (const [filename, entry] of directory.entries()) {
         const match = entry.kind === 'file' ? PROFILE_FILENAME.exec(filename) : undefined
         if (!match) continue
@@ -363,6 +369,15 @@ export function createProfileRepository(
         }
         try {
           profiles.push(await readProfile(storage, id))
+          try {
+            const [version] = await storage.execute('PRAGMA user_version')
+            const configured = typeof version?.user_version === 'number' && version.user_version >= 3
+              ? await hasSimulatedSyncAccess(storage)
+              : false
+            syncStatuses[id] = { state: configured ? 'configured' : 'unconfigured' }
+          } catch (error) {
+            syncStatuses[id] = { state: 'error', message: errorMessage(error) }
+          }
         } catch (error) {
           errors.push({ id, message: errorMessage(error) })
         } finally {
@@ -372,6 +387,7 @@ export function createProfileRepository(
       return {
         profiles: profiles.toSorted((left, right) => left.label.localeCompare(right.label)),
         errors,
+        syncStatuses,
       }
     } finally {
       await storage.dispose()
@@ -402,7 +418,7 @@ export function createProfileRepository(
           return Promise.reject(new Error('The profile storage session is unavailable. Reopen the profile and retry.'))
         }
         if (simulatedSyncWriteInProgress) {
-          return Promise.reject(new Error('Simulated setup is being saved. Retry the profile operation shortly.'))
+          return Promise.reject(new Error('Sync setup is being saved. Retry the profile operation shortly.'))
         }
         return storage.execute(sql, bind)
       }
@@ -420,7 +436,7 @@ export function createProfileRepository(
             throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
           }
           if (simulatedSyncWriteInProgress) {
-            throw new Error('Simulated setup is already being saved. Retry the operation shortly.')
+            throw new Error('Sync setup is already being saved. Retry the operation shortly.')
           }
           simulatedSyncWriteInProgress = true
           try {

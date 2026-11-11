@@ -1,4 +1,17 @@
 import { defineConfig, devices } from '@playwright/test'
+import { existsSync, readFileSync } from 'node:fs'
+
+const disclaimer = readFileSync(new URL('./src/content/disclaimer.md', import.meta.url), 'utf8')
+const appVersionFile = new URL('./dist/app-version.txt', import.meta.url)
+const appVersion = existsSync(appVersionFile) ? readFileSync(appVersionFile, 'utf8') : ''
+const acknowledgedOrigins = [
+  ['http://127.0.0.1:4176', 'development'],
+  ['http://127.0.0.1:4177', appVersion],
+  ['http://127.0.0.1:4178', appVersion],
+].map(([origin, version]) => ({
+  origin,
+  localStorage: [{ name: 'jst-disclaimer-acknowledgment', value: `${version}\n${disclaimer}` }],
+}))
 
 const browsers = [
   ['chromium', 'Desktop Chrome'],
@@ -20,6 +33,7 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   use: {
     trace: 'retain-on-failure',
+    storageState: { cookies: [], origins: acknowledgedOrigins },
   },
   projects: availableBrowsers.flatMap(([browser, device]) => [
     {

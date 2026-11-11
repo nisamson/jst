@@ -35,6 +35,10 @@ test('separate local profiles are discoverable and isolated after reload', async
   expect(beforeReload.listing).toEqual({
     profiles: [beforeReload.first, beforeReload.second],
     errors: [],
+    syncStatuses: {
+      [beforeReload.first.id]: { state: 'unconfigured' },
+      [beforeReload.second.id]: { state: 'unconfigured' },
+    },
   })
   expect(beforeReload.first.id).not.toBe(beforeReload.second.id)
 
@@ -125,7 +129,9 @@ test('profile creation failure is reported and can be retried without a false pr
     const profiles: typeof import('../../src/storage/profiles') = await import(modulePath)
     return { created: await profiles.createProfile({ label: 'Retry me' }), listing: await profiles.listProfiles() }
   })
-  expect(retry.listing).toEqual({ profiles: [retry.created], errors: [] })
+  expect(retry.listing).toEqual({
+    profiles: [retry.created], errors: [], syncStatuses: { [retry.created.id]: { state: 'unconfigured' } },
+  })
 })
 
 test('unsupported OPFS storage blocks profile access with an explanation', async ({ page }) => {

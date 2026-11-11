@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core'
+import { useCallback, useEffect, useState } from 'react'
+import { ActionIcon, Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title, Tooltip } from '@mantine/core'
+import { IconCloudCheck, IconCloudOff, IconFolderOpen, IconTrash } from '@tabler/icons-react'
 import CreateProfileForm from '../components/CreateProfileForm'
 import ConfirmDeletionDialog from '../components/ConfirmDeletionDialog'
 import SimulatedSyncDialog from '../components/SimulatedSyncDialog'
@@ -7,6 +8,7 @@ import { useRequestStoragePersistence } from '../components/storage-persistence-
 import type { Profile, ProfileListing } from '../storage/profiles'
 import type { CreateProfileInput } from '../storage/profiles'
 import { createProfile, deleteProfile, listProfiles } from '../storage/profiles'
+import AdvancedDetails from '../components/AdvancedDetails'
 
 type DiscoveryState =
   | { state: 'loading' }
@@ -68,6 +70,7 @@ function ProfileDiscovery({
         state: 'loaded',
         listing: {
           ...current.listing,
+          syncStatuses: { ...current.listing.syncStatuses, [profile.id]: { state: 'unconfigured' } },
           profiles: [...current.listing.profiles, profile]
             .toSorted((left, right) => left.label.localeCompare(right.label)),
         },
@@ -97,6 +100,21 @@ function ProfileDiscovery({
     setProfileToDelete(undefined)
   }
 
+  const updateSyncStatus = useCallback((profileId: string, configured: boolean) => {
+    setDiscovery((current) => current.state === 'loaded'
+      ? {
+        state: 'loaded',
+        listing: {
+          ...current.listing,
+          syncStatuses: {
+            ...current.listing.syncStatuses,
+            [profileId]: { state: configured ? 'configured' : 'unconfigured' },
+          },
+        },
+      }
+      : current)
+  }, [])
+
   const listing = discovery.state === 'loaded' ? discovery.listing : undefined
   const hasDiscoveryErrors = Boolean(listing && listing.errors.length > 0)
 
@@ -104,9 +122,6 @@ function ProfileDiscovery({
     <Container component="main" size="var(--app-content-width)" py="xl">
       <Stack gap="xl">
         <Stack gap="xs">
-          <Text c="violet.6" fw={700} size="sm" tt="uppercase" lts={1.3}>
-            Local-first job search tracker
-          </Text>
           <Title order={1}>Your profiles</Title>
           <Text c="dimmed">
             Choose a local profile to continue. Each profile is stored separately in this browser.
@@ -151,7 +166,7 @@ function ProfileDiscovery({
               <Stack component="ul" gap={4} mt="xs" pl="md">
                 {listing?.errors.map((error) => (
                   <Text component="li" key={error.id} style={{ overflowWrap: 'anywhere' }}>
-                    Profile {error.id}: {error.message}
+                    Profile<AdvancedDetails> {error.id}</AdvancedDetails>: {error.message}
                   </Text>
                 ))}
               </Stack>
@@ -159,40 +174,56 @@ function ProfileDiscovery({
           )}
           {listing && listing.profiles.length > 0 && (
             <SimpleGrid component="ul" cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm" p={0} style={{ listStyle: 'none' }}>
-              {listing.profiles.map((profile) => (
+              {listing.profiles.map((profile) => {
+                const syncStatus = listing.syncStatuses[profile.id]
+                return (
                 <Paper component="li" key={profile.id} withBorder p="md" radius="md">
-                  <Group justify="space-between" wrap="nowrap">
-                    <Stack gap={2}>
-                      <Text fw={600}>{profile.label}</Text>
-                      {profile.realName && <Text c="dimmed" size="sm">{profile.realName}</Text>}
+                  <Group justify="space-between" wrap="nowrap" align="center">
+                    <Stack gap={2} miw={0}>
+                      <Text fw={600} style={{ overflowWrap: 'anywhere' }}>{profile.label}</Text>
+                      {profile.realName && <Text c="dimmed" size="sm" style={{ overflowWrap: 'anywhere' }}>{profile.realName}</Text>}
                     </Stack>
-                    <Group gap="xs">
-                      <Button
-                        variant="light"
-                        aria-label={`${profile.label} profile`}
-                        onClick={() => onOpenProfile(profile.id)}
-                      >
-                        Open profile
-                      </Button>
-                      <Button
-                        variant="default"
-                        aria-label={`Set up simulated sync for ${profile.label}`}
-                        onClick={() => setSetupFlow({ profile, continueToClaims: false })}
-                      >
-                        Simulated sync
-                      </Button>
-                      <Button
-                        color="red"
-                        variant="light"
-                        aria-label={`Delete ${profile.label}`}
-                        onClick={() => setProfileToDelete(profile)}
-                      >
-                        Delete
-                      </Button>
+                    <Group gap="xs" wrap="nowrap">
+                      <Tooltip label="Open profile" events={{ hover: true, focus: true, touch: true }}>
+                        <ActionIcon size="lg" variant="light" aria-label={`${profile.label} profile`}
+                          onClick={() => onOpenProfile(profile.id)}>
+                          <IconFolderOpen size={20} aria-hidden />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={syncStatus?.state === 'configured'
+                        ? 'Sync setup saved. No data has been synced or backed up.'
+                        : syncStatus?.state === 'unconfigured'
+                          ? 'No sync setup. Open sync setup.'
+                          : 'Sync setup status unavailable. Open sync setup.'}
+                        events={{ hover: true, focus: true, touch: true }}>
+                        <ActionIcon size="lg" color={syncStatus?.state === 'configured' ? 'slate' : 'yellow'}
+                          variant="light" aria-label={`Set up sync for ${profile.label} — ${syncStatus?.state === 'configured'
+                            ? 'setup saved'
+                            : syncStatus?.state === 'unconfigured'
+                              ? 'not configured'
+                              : 'status unavailable'}`}
+                          onClick={() => setSetupFlow({ profile, continueToClaims: false })}>
+                          {syncStatus?.state === 'configured'
+                            ? <IconCloudCheck size={20} aria-hidden />
+                            : <IconCloudOff size={20} aria-hidden />}
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Delete profile" events={{ hover: true, focus: true, touch: true }}>
+                        <ActionIcon size="lg" color="red" variant="light" aria-label={`Delete ${profile.label}`}
+                          onClick={() => setProfileToDelete(profile)}>
+                          <IconTrash size={20} aria-hidden />
+                        </ActionIcon>
+                      </Tooltip>
                     </Group>
                   </Group>
+                  {syncStatus?.state === 'error' && (
+                    <Text role="alert" c="red" size="sm" mt="sm">
+                      Sync setup status could not be loaded: {syncStatus.message}
+                    </Text>
+                  )}
                 </Paper>
-              ))}
+                )
+              })}
             </SimpleGrid>
           )}
 
@@ -218,10 +249,10 @@ function ProfileDiscovery({
         </Stack>
 
         <Group justify="space-between" align="center" pt="md" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-          <Anchor href="/diagnostics/storage">Storage diagnostics</Anchor>
+          <AdvancedDetails><Anchor href="/diagnostics/storage">Storage diagnostics</Anchor></AdvancedDetails>
           <Group gap="xs">
             <Badge color="gray" variant="light">Local only</Badge>
-            <Text c="dimmed" size="sm">Local storage is not a backup.</Text>
+            <Text c="dimmed" size="sm">Local-only storage is not a backup.</Text>
           </Group>
         </Group>
       </Stack>
@@ -230,6 +261,7 @@ function ProfileDiscovery({
           key={setupFlow.profile.id}
           profileId={setupFlow.profile.id}
           profileLabel={setupFlow.profile.label}
+          onSetupChanged={updateSyncStatus}
           onClose={setupFlow.continueToClaims ? finishSetupFlow : () => setSetupFlow(undefined)}
           onContinueLocally={setupFlow.continueToClaims ? finishSetupFlow : undefined}
           onSetupComplete={setupFlow.continueToClaims ? finishSetupFlow : undefined}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Fieldset, Group, Paper, Stack, Text, Textarea, TextInput } from '@mantine/core'
 import { evidenceLimits, fileSizeLabel, validateEvidence } from '../storage/evidence-model'
 import type { EvidenceDraft } from '../storage/evidence-model'
+import { IconLink, IconPaperclip } from '@tabler/icons-react'
 
 export default function EvidenceEditor({ value, onChange, disabled }: {
   value: EvidenceDraft
@@ -25,7 +26,7 @@ export default function EvidenceEditor({ value, onChange, disabled }: {
   }
 
   return (
-    <Fieldset legend="Supporting evidence (optional)" disabled={disabled} onPaste={(event) => {
+    <Fieldset legend="Supporting evidence (optional)" px={{ base: 'xs', sm: 'lg' }} disabled={disabled} onPaste={(event) => {
       const pictures = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'))
       if (pictures.length > 0) {
         event.preventDefault()
@@ -54,7 +55,7 @@ export default function EvidenceEditor({ value, onChange, disabled }: {
           </Paper>
         ))}
         <Group>
-          <Button variant="light" disabled={disabled || value.links.length >= evidenceLimits.links}
+          <Button leftSection={<IconLink size={16} aria-hidden />} variant="light" disabled={disabled || value.links.length >= evidenceLimits.links}
             onClick={() => onChange({ ...value, links: [...value.links, { id: crypto.randomUUID(), label: '', url: '' }] })}>Add link</Button>
         </Group>
         {value.files.map((file, index) => (
@@ -72,7 +73,7 @@ export default function EvidenceEditor({ value, onChange, disabled }: {
             </Stack>
           </Paper>
         ))}
-        <Fieldset legend="Add evidence files" p="md" radius="sm"
+        <Fieldset legend={<Group gap="xs"><IconPaperclip size={16} aria-hidden />Add evidence files</Group>} p="md" radius="sm"
           aria-disabled={disabled} tabIndex={disabled ? -1 : 0} style={{ borderStyle: 'dashed' }}
           onDragOver={(event) => {
             event.preventDefault()

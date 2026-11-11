@@ -19,6 +19,7 @@ export function createSimulatedSyncStateRepository(
   async function getState(profileId: string): Promise<SimulatedSyncState | undefined> {
     const profile = await dependencies.openProfile(profileId)
     try {
+      if (!profile.access.syncConnected) return undefined
       const [row] = await profile.execute(
         'SELECT provider_id, account_label, connected_at FROM simulated_sync_setup WHERE id = 1',
       )
@@ -28,7 +29,7 @@ export function createSimulatedSyncStateRepository(
         || typeof row.account_label !== 'string'
         || typeof row.connected_at !== 'string'
       ) {
-        throw new Error('The saved simulated setup state is invalid.')
+        throw new Error('The saved sync setup state is invalid.')
       }
       return {
         providerId: 'dummy',
@@ -42,7 +43,7 @@ export function createSimulatedSyncStateRepository(
 
   async function saveState(profileId: string, state: SimulatedSyncState): Promise<void> {
     if (state.providerId !== 'dummy' || !state.accountLabel.trim() || !state.connectedAt.trim()) {
-      throw new Error('The simulated setup state is invalid.')
+      throw new Error('The sync setup state is invalid.')
     }
 
     const profile = await dependencies.openProfile(profileId)
@@ -53,7 +54,18 @@ export function createSimulatedSyncStateRepository(
     }
   }
 
-  return { getState, saveState }
+  async function removeState(profileId: string): Promise<void> {
+    const profile = await dependencies.openProfile(profileId)
+    try {
+      if (profile.access.syncConnected) {
+        await profile.execute('DELETE FROM simulated_sync_setup WHERE id = 1')
+      }
+    } finally {
+      await profile.dispose()
+    }
+  }
+
+  return { getState, saveState, removeState }
 }
 
 const simulatedSyncStateRepository = createSimulatedSyncStateRepository()
@@ -61,3 +73,5 @@ const simulatedSyncStateRepository = createSimulatedSyncStateRepository()
 export const getSimulatedSyncState = (profileId: string) => simulatedSyncStateRepository.getState(profileId)
 export const saveSimulatedSyncState = (profileId: string, state: SimulatedSyncState) =>
   simulatedSyncStateRepository.saveState(profileId, state)
+export const removeSimulatedSyncState = (profileId: string) =>
+  simulatedSyncStateRepository.removeState(profileId)

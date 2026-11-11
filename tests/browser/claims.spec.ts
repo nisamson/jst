@@ -454,7 +454,7 @@ test('stacks claim navigation on mobile and permits read-only keyboard selection
   const desktopDetail = await detail.boundingBox()
   expect(desktopList).not.toBeNull()
   expect(desktopDetail).not.toBeNull()
-  expect(desktopDetail!.x).toBeGreaterThan(desktopList!.x + desktopList!.width)
+  expect(desktopDetail!.y).toBeGreaterThanOrEqual(desktopList!.y + desktopList!.height)
 
   await page.setViewportSize({ width: 375, height: 812 })
   await expect(page.getByRole('button', { name: longIdentifier, exact: true })).toBeHidden()
@@ -538,7 +538,10 @@ test('local developer controls add and remove persistent dummy claims without so
   ]) {
     const offsets = await buttons.evaluateAll((elements) => elements.map((element) => {
       const label = element.querySelector('.mantine-Button-label')!
-      return label.getBoundingClientRect().left - element.getBoundingClientRect().left
+      const section = element.querySelector('.mantine-Button-section')
+      const sectionWidth = section?.getBoundingClientRect().width ?? 0
+      const sectionGap = section ? Number.parseFloat(getComputedStyle(section).marginRight) : 0
+      return label.getBoundingClientRect().left - element.getBoundingClientRect().left - sectionWidth - sectionGap
     }))
     expect(offsets.every((offset) => offset > 0 && offset < 30)).toBe(true)
   }

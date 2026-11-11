@@ -41,7 +41,7 @@ export default function DeveloperClaimsTools({
         </Text>
         {readOnly && (
           <Text size="sm" c="dimmed">
-            This profile is read-only. To test writes, return to profiles and connect the simulated
+            This profile is read-only. To test writes, return to profiles and connect the
             provider, or use a profile with persistent storage granted.
           </Text>
         )}

@@ -6,6 +6,7 @@ import { deleteProfileClaim, listClaims, saveProfileClaim } from '../storage/cla
 import type { Claim, ClaimInput } from '../storage/claims'
 import ClaimsWorkspace from '../components/ClaimsWorkspace'
 import { developerToolsEnabled } from '../storage/developer-tools'
+import AdvancedDetails from '../components/AdvancedDetails'
 
 const DeveloperClaimsTools = developerToolsEnabled()
   ? lazy(() => import('../components/DeveloperClaimsTools'))
@@ -34,7 +35,7 @@ export default function ClaimsPage({
 
   if (!profileId) {
     return (
-      <Container component="main" size="var(--app-content-width)" py="xl">
+      <Container component="main" size="var(--app-content-width)" px={{ base: 0, sm: 'md' }} py="xl">
         <Stack gap="md">
           <Title order={1}>Choose a profile</Title>
           <Text>A local profile must be selected before its claims overview can be opened.</Text>
@@ -160,7 +161,7 @@ function ClaimsOverview({
   }
 
   return (
-    <Container component="main" size="var(--app-content-width)" py="xl">
+    <Container component="main" size="var(--app-content-width)" px={{ base: 0, sm: 'md' }} py="xl">
       <Stack gap="xl">
         <Stack gap="xs">
           <nav aria-label="Breadcrumb">
@@ -217,12 +218,14 @@ function ClaimsOverview({
           />
         )}
         {profileState.state === 'loaded' && DeveloperClaimsTools && (
-          <Suspense fallback={null}>
-            <DeveloperClaimsTools
-              readOnly={profileState.access.mode === 'read-only'}
-              onChange={changeDummyClaims}
-            />
-          </Suspense>
+          <AdvancedDetails>
+            <Suspense fallback={null}>
+              <DeveloperClaimsTools
+                readOnly={profileState.access.mode === 'read-only'}
+                onChange={changeDummyClaims}
+              />
+            </Suspense>
+          </AdvancedDetails>
         )}
       </Stack>
     </Container>

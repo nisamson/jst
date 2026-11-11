@@ -19,6 +19,53 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
 })
 
+test('lays out claim choices above a full-width overview on desktop and stacks them on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await createProfile(page, 'Claim layout')
+  const longName = `Long claim ${'x'.repeat(100)}`
+  for (const name of ['First claim', 'Second claim', longName]) {
+    await page.getByRole('button', { name: 'Create claim', exact: true }).click()
+    const form = page.getByRole('dialog', { name: 'Create claim', exact: true })
+    await form.getByRole('textbox', { name: 'Claim identifier', exact: true }).fill(name)
+    await form.getByRole('button', { name: 'Create claim', exact: true }).click()
+    await expect(form).toBeHidden()
+  }
+  const navigation = page.getByRole('navigation', { name: 'Claims', exact: true })
+  const first = navigation.getByRole('button', { name: 'First claim', exact: true })
+  const second = navigation.getByRole('button', { name: 'Second claim', exact: true })
+  const longClaim = navigation.getByRole('button', { name: longName, exact: true })
+  const longTitle = longClaim.getByText(longName, { exact: true })
+  const overview = page.getByRole('region', { name: `${longName} overview`, exact: true })
+  const boxes = await Promise.all([navigation.boundingBox(), overview.boundingBox(), first.boundingBox(), second.boundingBox(), longClaim.boundingBox()])
+  const [navBox, overviewBox, firstBox, secondBox, longBox] = boxes
+  if (!navBox || !overviewBox || !firstBox || !secondBox || !longBox) throw new Error('Claim layout was not measured.')
+  expect(navBox.y + navBox.height).toBeLessThanOrEqual(overviewBox.y)
+  expect(overviewBox.width).toBeGreaterThan(1440 * 0.85)
+  expect(firstBox.y).toBe(secondBox.y)
+  expect(firstBox.x).not.toBe(secondBox.x)
+  expect(longBox.height).toBeCloseTo(firstBox.height, 1)
+  await expect(longClaim).toHaveAttribute('title', longName)
+  await expect(longTitle).toHaveCSS('text-overflow', 'ellipsis')
+  expect(await longTitle.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  await expect(overview).toContainText(longName)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
+
+  await page.setViewportSize({ width: 320, height: 812 })
+  await expect(first).toBeHidden()
+  await navigation.getByRole('button', { name: 'Show claims', exact: true }).click()
+  const mobileFirst = await first.boundingBox()
+  const mobileSecond = await second.boundingBox()
+  const mobileLong = await longClaim.boundingBox()
+  if (!mobileFirst || !mobileSecond || !mobileLong) throw new Error('Mobile claim choices were not measured.')
+  expect(mobileFirst.y).not.toBe(mobileSecond.y)
+  expect(mobileLong.height).toBeCloseTo(mobileFirst.height, 1)
+  expect(await longTitle.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await first.click()
+  await expect(first).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('region', { name: 'First claim overview', exact: true })).toBeVisible()
+})
+
 test('creates and edits claims with duplicate labels, stable identity, optional dates, and profile isolation', async ({ page }) => {
   await createProfile(page, 'Lifecycle one')
   await page.getByRole('button', { name: 'Create claim', exact: true }).click()

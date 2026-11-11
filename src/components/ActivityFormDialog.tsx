@@ -7,6 +7,7 @@ import { employerFields, worksourceFields } from './activity-fields'
 import EvidenceEditor from './EvidenceEditor'
 import { emptyEvidence, validateEvidence } from '../storage/evidence-model'
 import type { EvidenceDraft } from '../storage/evidence-model'
+import { IconEdit, IconPlus } from '@tabler/icons-react'
 
 export default function ActivityFormDialog({
   activity, initialDate, readOnly, onSave, onClose,
@@ -54,7 +55,7 @@ export default function ActivityFormDialog({
       <form noValidate aria-busy={saving} onSubmit={(event) => void submit(event)}>
         <Stack gap="md">
           <Text size="sm">Your own job-search log. Saving does not establish ESD eligibility or approval.</Text>
-          <Fieldset legend="Activity details" disabled={saving || readOnly}>
+          <Fieldset legend="Activity details" px={{ base: 'xs', sm: 'lg' }} disabled={saving || readOnly}>
             <Stack gap="sm">
               <TextInput ref={dateInput} type="date" label="Activity date" required min="0001-01-01" max="9999-12-31"
                 value={input.activity_date} onChange={(event) => setField('activity_date', event.currentTarget.value)} />
@@ -103,7 +104,8 @@ export default function ActivityFormDialog({
           {error && <Alert color="red" title="Activity could not be saved">{error}</Alert>}
           <Group justify="flex-end">
             <Button type="button" variant="default" disabled={saving} onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving || readOnly} loading={saving}>{activity ? 'Save activity' : 'Add activity'}</Button>
+            <Button leftSection={activity ? <IconEdit size={16} aria-hidden /> : <IconPlus size={16} aria-hidden />} type="submit" disabled={saving || readOnly}
+              loading={saving}>{activity ? 'Save activity' : 'Add activity'}</Button>
           </Group>
         </Stack>
       </form>
