@@ -8,14 +8,15 @@ architecture specification; see [architecture](architecture.md) and the
 ## Application flow
 
 `index.html` loads `src/main.tsx`. The entry point mounts React in `StrictMode`,
-configures Mantine, and selects `/diagnostics/storage` by pathname; other paths
-render `src/App.tsx`. `App` handles profile selection and `/claims?profile=<id>`
+configures Mantine and shared header/settings/PWA/disclaimer chrome, and selects
+`/diagnostics/storage`, `/eula`, or `/privacy` by pathname; other paths render
+`src/App.tsx`. `App` handles profile selection and `/claims?profile=<id>`
 navigation inside the `StorageStatus` capability boundary.
 
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | App shell | `src/App.tsx`, `src/main.tsx` | Root component, Mantine setup, page selection and lightweight history navigation |
-| Pages | `src/pages/` | `ProfileLandingPage` discovers and creates profiles; `ClaimsPage` opens a selected profile and shows its claims overview; `StorageDiagnosticsPage` hosts storage diagnostics |
+| Pages | `src/pages/`, `src/components/LegalDocumentPage.tsx` | `ProfileLandingPage` discovers and creates profiles; `ClaimsPage` opens a selected profile; `StorageDiagnosticsPage` hosts storage diagnostics; `LegalDocumentPage` renders Markdown policies |
 | UI components | `src/components/` | Reusable form, simulated setup dialog, and storage UI; storage status provides the persistence-request boundary |
 | Storage and provider services | `src/storage/`, `src/sync/` | Profile persistence, profile-scoped simulated setup state, dummy-provider behavior, capability checks, and diagnostics data operations |
 | SQLite worker | `src/storage/sqlite.worker.ts`, `src/storage/protocol.ts` | Worker-side SQLite WASM/OPFS operations and typed request/response messages |
@@ -62,6 +63,9 @@ navigation inside the `StorageStatus` capability boundary.
 - `src/storage/simulated-sync-state.ts` persists successful simulated setup
   inside that profile database; `src/sync/simulated-provider.ts` is a
   display-only dummy provider and never transfers profile data.
+  Profile discovery reports each setup state separately from profile metadata;
+  removing a setup deletes only its local configuration. Without persistent
+  storage permission, reopening that profile becomes read-only.
 - `src/storage/local-storage.ts` owns the browser-to-worker session boundary;
   `sqlite.worker.ts` initializes SQLite WASM and uses the OPFS VFS. Do not
   substitute localStorage or an in-memory database.
@@ -69,10 +73,37 @@ navigation inside the `StorageStatus` capability boundary.
   initiates profile creation. Read-only capability checks and profile
   discovery do not prompt. A denied or unavailable persistence request warns
   without blocking local use.
-- `src/main.tsx` selects the storage diagnostics page; `src/App.tsx` handles
-  the landing page and profile-scoped claims route without a routing library.
+- `src/main.tsx` selects diagnostics and Markdown legal pages;
+  `src/App.tsx` handles the landing page and profile-scoped claims route without
+  a routing library.
 - Global styles and theme-level CSS are in `src/index.css`; UI controls and
   layout primarily use Mantine. `public/icons.svg` is referenced by root URL.
+- `AppHeader` links the logo/title to the landing page and opens `SettingsDialog`
+  on every page. Mantine persists Light/Dark/System theme selection locally;
+  System follows the operating system's preference.
+- `DisplaySettingsProvider` stores Advanced display in browser-local
+  `localStorage`, never in a profile or synced data. It defaults on in Vite
+  development and loopback production previews, off on other production hosts.
+  `AdvancedDetails` and `RecordTechnicalDetails` gate diagnostic links/content,
+  internal IDs, record timestamps, and environment-available developer tools.
+  Read-only notices, errors, persistence/data-loss warnings, user-entered
+  dates, and essential record actions remain visible. Blocked storage still
+  permits changes for the current visit.
+- `@tabler/icons-react` supplies decorative action and activity-kind icons.
+  `public/jst-logo.svg` is the diagonal JST SVG brand mark used as the favicon;
+  matching `pwa-192.svg` and `pwa-512.svg` assets supply install icons.
+- `DisclaimerFooter` renders Markdown imported from `src/content/disclaimer.md`.
+  It stays fixed to the viewport bottom on desktop and appears at both ends of
+  the page on mobile. Replace the copy in that text file.
+- `DisclaimerDialog` requires explicit acknowledgment of that same Markdown on
+  first use. A browser-local `localStorage` entry records the loaded build and
+  disclaimer text, separately from profiles and simulated sync. New builds,
+  changed disclaimer text, or cleared/expired storage prompt again; blocked
+  storage allows continuation but cannot remember acknowledgment across visits.
+- `/eula` and `/privacy` render `src/content/eula.md` and
+  `src/content/privacy-policy.md` as Markdown; footer links provide access to
+  both documents. Keep the legal copy reviewed and replace any remaining
+  placeholders before relying on or publishing it.
 
 ## Tests and common commands
 
@@ -105,6 +136,8 @@ and cascading cleanup are covered by `tests/browser/evidence-storage.spec.ts`.
 
 With `npm run dev`, or `npm run build` followed by `npm run preview` on
 `localhost`, `127.0.0.1`, or `[::1]`, open a profile to find **Developer claim tools**.
+These controls also require **Advanced display** in Settings (on by default
+in these environments).
 **Add dummy claims** inserts a repeatable set of four real,
 profile-scoped SQLite records (duplicates, optional dates, and a long label).
 They survive reload and can also be deleted individually through the normal UI.

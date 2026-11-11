@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#863bff"/>
-  <path d="M296 48 112 277h118l-22 187 192-263H277z" fill="#fff"/>
+  <title>JST logo</title>
+  <rect width="512" height="512" rx="112" fill="#365a7a"/>
+  <g transform="translate(23 22)" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="150" font-weight="700">
+    <text x="64" y="176">J</text>
+    <text x="184" y="288">S</text>
+    <text x="310" y="400">T</text>
+  </g>
 </svg>

@@ -3,6 +3,7 @@ import { Alert, Anchor, Button, Fieldset, Group, Stack, Text } from '@mantine/co
 import { loadProfileEvidenceFile } from '../storage/evidence'
 import { downloadFilename, fileSizeLabel } from '../storage/evidence-model'
 import type { ActivityEvidence } from '../storage/evidence-model'
+import { IconDownload } from '@tabler/icons-react'
 
 export default function EvidenceDetails({ evidence, profileId, claimId, activityId }: {
   evidence: ActivityEvidence
@@ -34,7 +35,7 @@ export default function EvidenceDetails({ evidence, profileId, claimId, activity
   }
 
   return (
-    <Fieldset legend="Supporting evidence">
+    <Fieldset legend="Supporting evidence" px={{ base: 'xs', sm: 'lg' }}>
       <Stack gap="sm">
         <Text size="sm">Stored only in this browser profile, not synced or backed up. Links open in a new tab.</Text>
         {evidence.links.length === 0 && evidence.files.length === 0 && <Text size="sm">No links or files recorded.</Text>}
@@ -51,7 +52,7 @@ export default function EvidenceDetails({ evidence, profileId, claimId, activity
           <Stack key={file.id} gap={4}>
             <Group justify="space-between">
               <Text fw={500}>{file.name}</Text>
-              <Button variant="light" size="compact-sm" aria-label={`Download ${file.name}`} disabled={downloading !== undefined}
+              <Button leftSection={<IconDownload size={14} aria-hidden />} variant="light" size="compact-sm" aria-label={`Download ${file.name}`} disabled={downloading !== undefined}
                 loading={downloading === file.id} onClick={() => void download(file.id)}>Download</Button>
             </Group>
             <Text size="sm">{file.type || 'Type not provided'} - {fileSizeLabel(file.size)}</Text>

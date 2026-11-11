@@ -6,6 +6,7 @@ import type { StorageSession } from '../storage/local-storage'
 import type { Persistence } from '../storage/environment'
 import { requestPersistence } from '../storage/environment'
 import { StoragePersistenceContext } from './storage-persistence-context'
+import AdvancedDetails from './AdvancedDetails'
 
 type Status =
   | { state: 'checking' }
@@ -61,7 +62,7 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
         <StoragePersistenceContext.Provider value={requestPersistenceForProfileCreation}>
           <Paper component="section" aria-label="Local storage" withBorder p="md" radius="md">
             <Stack gap="sm">
-              <Text component="output">Local SQLite storage is ready.</Text>
+              <AdvancedDetails><Text component="output">Local SQLite storage is ready.</Text></AdvancedDetails>
               {status.persistence && status.persistence !== 'granted' && (
                 <Alert color="yellow" role="note" title="Persistent storage is not confirmed">
                   {status.persistence === 'denied'
@@ -71,12 +72,12 @@ function StorageCheck({ onRetry, children }: { onRetry: () => void; children?: R
                       : status.persistence === 'unknown'
                         ? 'Persistent storage status could not be determined.'
                         : 'Persistent storage permission could not be checked or requested.'}{' '}
-                  You can still create and read profiles. Profiles without verified persistence or simulated
+                  You can still create and read profiles. Profiles without verified persistence or
                   sync are read-only, and the browser may automatically clear local records.
                 </Alert>
               )}
               <Text c="dimmed" size="sm">
-                Local records can still be lost or cleared, even with persistent storage permission. This is not a backup.
+                Local-only records can still be lost or cleared, even with persistent storage permission. This is not a backup.
               </Text>
             </Stack>
           </Paper>

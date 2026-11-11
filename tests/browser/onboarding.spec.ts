@@ -6,7 +6,7 @@ async function createProfile(page: Page, label: string) {
   const form = page.locator('form')
   await form.getByRole('textbox', { name: 'Profile label' }).fill(label)
   await form.getByRole('button', { name: 'Create profile' }).click()
-  await expect(page.getByRole('heading', { name: 'Simulated sync setup' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sync setup' })).toBeVisible()
 }
 
 test('continues a new local profile to its read-only claims overview and reopens it after reload', async ({ page }) => {
@@ -18,7 +18,7 @@ test('continues a new local profile to its read-only claims overview and reopens
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
   await createProfile(page, 'Local onboarding profile')
-  await expect(page.getByText('no authorization, data transfer, synchronization, or backup', { exact: false })).toBeVisible()
+  await expect(page.getByText('No data has been synced or backed up.', { exact: false })).toBeVisible()
   const continueButton = page.getByRole('button', { name: 'Continue without syncing' })
   await continueButton.hover()
   await expect(page.getByRole('tooltip')).toHaveText(
@@ -73,7 +73,7 @@ test('successful simulated setup navigates to claims and remains profile-scoped 
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
   await createProfile(page, 'Connected onboarding profile')
-  await page.getByRole('button', { name: 'Connect simulated provider' }).click()
+  await page.getByRole('button', { name: 'Connect provider' }).click()
 
   await expect(page).toHaveURL(/\/claims\?profile=[0-9a-f-]+$/)
   await expect(page.getByText('Profile: Connected onboarding profile')).toBeVisible()
@@ -99,7 +99,7 @@ test('failed setup can continue locally without changing existing profile record
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('Local SQLite storage is ready.')
   await createProfile(page, 'Retry onboarding profile')
-  await expect(page.getByRole('button', { name: 'Connect simulated provider' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect provider' })).toBeVisible()
 
   await page.evaluate(async () => {
     const modulePath = '/src/storage/profiles.ts'
@@ -124,7 +124,7 @@ test('failed setup can continue locally without changing existing profile record
     }
   })
 
-  await page.getByRole('button', { name: 'Connect simulated provider' }).click()
+  await page.getByRole('button', { name: 'Connect provider' }).click()
   await expect(page.getByRole('alert')).toContainText('Simulated setup persistence failure')
   await page.getByRole('button', { name: 'Continue without syncing' }).click()
 

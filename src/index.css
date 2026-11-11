@@ -11,12 +11,107 @@ body {
   margin: 0;
 }
 
+.app-header {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.claim-list > li {
+  min-width: 0;
+}
+
+@media (min-width: 48em) {
+  .claim-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .claim-list > li {
+    flex: 0 1 16rem;
+  }
+}
+
 #root {
   min-height: 100vh;
+  padding-bottom: calc(min(30vh, 12rem) + var(--mantine-spacing-md));
+}
+
+.disclaimer-footer--top {
+  display: none;
+}
+
+.disclaimer-footer--bottom {
+  position: fixed;
+  z-index: 200;
+  inset-inline: 0;
+  bottom: 0;
+  max-height: min(30vh, 12rem);
+  overflow-y: auto;
+  background: var(--mantine-color-body);
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.markdown-document > :first-child {
+  margin-block-start: 0;
+}
+
+.markdown-document > :last-child {
+  margin-block-end: 0;
+}
+
+.markdown-document p {
+  margin-block: 0.5em;
+}
+
+.disclaimer-markdown {
+  font-size: var(--mantine-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.markdown-document :is(h2, h3, h4) {
+  margin-block: 1.5em 0.5em;
+}
+
+.markdown-document :is(ul, ol) {
+  padding-inline-start: 1.5em;
+}
+
+.markdown-document table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown-document :is(th, td) {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--mantine-color-default-border);
 }
 
 @media (max-width: 47.99375em) {
+  #root {
+    padding-bottom: 0;
+  }
+
   .mobile-disclosure-content[data-collapsed='true'] {
     display: none;
+  }
+
+  .disclaimer-footer--top {
+    display: block;
+  }
+
+  .disclaimer-footer--bottom {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 }

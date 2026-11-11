@@ -3,6 +3,7 @@ import { Button, Group, Paper, Stack, Switch, Text, Title } from '@mantine/core'
 import { weekDisplayLabel, weekRangeLabel } from '../storage/activity-weeks'
 import type { ActivityWeeks } from '../storage/activity-weeks'
 import MobileSectionDisclosure from './MobileSectionDisclosure'
+import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 
 const weeksPerPage = 12
 
@@ -65,8 +66,8 @@ export default function ActivityWeekNavigator({ weeks, selectedWeek, onSelect }:
                 </Stack>
                 {totalPages > 1 && (
                   <Group gap="xs">
-                    <Button size="xs" variant="default" disabled={page === 0} onClick={() => browse(page - 1)}>Newer weeks</Button>
-                    <Button size="xs" variant="default" disabled={page >= totalPages - 1} onClick={() => browse(page + 1)}>Older weeks</Button>
+                    <Button leftSection={<IconChevronLeft size={14} aria-hidden />} size="xs" variant="default" disabled={page === 0} onClick={() => browse(page - 1)}>Newer weeks</Button>
+                    <Button rightSection={<IconChevronRight size={14} aria-hidden />} size="xs" variant="default" disabled={page >= totalPages - 1} onClick={() => browse(page + 1)}>Older weeks</Button>
                     {page !== selectedPage && <Button size="xs" variant="subtle" onClick={() => setBrowsing(undefined)}>Show selected week</Button>}
                   </Group>
                 )}

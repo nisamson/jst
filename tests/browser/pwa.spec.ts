@@ -18,7 +18,7 @@ test('serves install metadata and square app icons', async ({ page }, testInfo) 
     short_name: 'JST',
     start_url: '/',
     display: 'standalone',
-    theme_color: '#863bff',
+    theme_color: '#365a7a',
   })
 
   for (const size of ['192x192', '512x512']) {
@@ -28,7 +28,13 @@ test('serves install metadata and square app icons', async ({ page }, testInfo) 
     const response = await page.request.get(icon.src)
     expect(response.ok()).toBe(true)
     expect(response.headers()['content-type']).toContain('image/svg+xml')
+    expect(await response.text()).toContain('JST')
   }
+  const logoResponse = await page.request.get('/jst-logo.svg')
+  expect(logoResponse.ok()).toBe(true)
+  expect(logoResponse.headers()['content-type']).toContain('image/svg+xml')
+  expect(await logoResponse.text()).toContain('JST')
+
 
   const appResponse = await page.request.get('/')
   expect(appResponse.headers()).toMatchObject({
@@ -40,7 +46,8 @@ test('serves install metadata and square app icons', async ({ page }, testInfo) 
     manifest: document.querySelector('link[rel="manifest"]')?.getAttribute('href'),
     themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content'),
   }))
-  expect(headers).toEqual({ manifest: '/manifest.webmanifest', themeColor: '#863bff' })
+  expect(headers).toEqual({ manifest: '/manifest.webmanifest', themeColor: '#365a7a' })
+  expect(await page.locator('link[rel="icon"]').getAttribute('href')).toBe('/jst-logo.svg')
 })
 
 test('reloads a profile from the cached shell while offline without caching profile databases', async ({ page }, testInfo) => {

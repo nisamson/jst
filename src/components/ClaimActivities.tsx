@@ -99,7 +99,7 @@ function ActivitiesContent({ profileId, claimId, readOnly, onReload }: Props & {
     setSearchSelectedId(undefined)
   }
   return (
-    <Paper component="section" aria-labelledby="claim-activities-heading" withBorder p="md" radius="md">
+    <Paper component="section" aria-labelledby="claim-activities-heading" withBorder px={{ base: 'xs', sm: 'md' }} py="md" radius="md">
       <Stack gap="md">
         <Group justify="space-between">
           <Title id="claim-activities-heading" order={2}>Job-search activities</Title>

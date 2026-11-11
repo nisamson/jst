@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -9,13 +9,14 @@ const headers = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 }
 
-const publicAssets = ['favicon.svg', 'icons.svg', 'manifest.webmanifest', 'pwa-192.svg', 'pwa-512.svg']
+const publicAssets = ['icons.svg', 'jst-logo.svg', 'manifest.webmanifest', 'pwa-192.svg', 'pwa-512.svg']
 
-function offlineShell(): Plugin {
+function offlineShell(appVersion: string): Plugin {
   return {
     name: 'jst-offline-shell',
     apply: 'build',
     async generateBundle(_, bundle) {
+      this.emitFile({ type: 'asset', fileName: 'app-version.txt', source: appVersion })
       const template = await readFile(new URL('./pwa/service-worker.js', import.meta.url), 'utf8')
       const indexHtml = await readFile(new URL('./index.html', import.meta.url))
       const buildFiles = Object.keys(bundle).toSorted()
@@ -48,12 +49,16 @@ function offlineShell(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [react(), offlineShell()],
-  server: { headers },
-  preview: { headers },
-  optimizeDeps: {
-    exclude: ['@sqlite.org/sqlite-wasm'],
-  },
-  worker: { format: 'es' },
+export default defineConfig(({ command }) => {
+  const appVersion = command === 'build' ? randomUUID() : 'development'
+  return {
+    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion) },
+    plugins: [react(), offlineShell(appVersion)],
+    server: { headers },
+    preview: { headers },
+    optimizeDeps: {
+      exclude: ['@sqlite.org/sqlite-wasm'],
+    },
+    worker: { format: 'es' },
+  }
 })

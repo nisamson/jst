@@ -7,6 +7,7 @@ const firstProfile = '11111111-1111-4111-8111-111111111111'
 const secondProfile = '22222222-2222-4222-8222-222222222222'
 let states: Map<string, SimulatedSyncState>
 let failInsert: boolean
+let failRemove: boolean
 
 function createHarness() {
   const dispose = vi.fn(async () => {})
@@ -16,6 +17,11 @@ function createHarness() {
       return state
         ? [{ provider_id: state.providerId, account_label: state.accountLabel, connected_at: state.connectedAt }]
         : []
+    }
+    if (sql.startsWith('DELETE FROM simulated_sync_setup')) {
+      if (failRemove) throw new Error('removal failed')
+      states.delete(activeProfile)
+      return []
     }
     throw new Error(`Unexpected SQL in test: ${sql}`)
   })
@@ -28,7 +34,7 @@ function createHarness() {
     activeProfile = profileId
     return {
       profile: { id: profileId, label: profileId, createdAt: '2026-01-01T00:00:00.000Z' },
-      access: { mode: 'read-only' as const, persistence: 'denied' as const, syncConnected: false },
+      access: { mode: 'read-only' as const, persistence: 'denied' as const, syncConnected: states.has(profileId) },
       execute,
       saveSimulatedSyncState,
       dispose,
@@ -46,6 +52,23 @@ function createHarness() {
 beforeEach(() => {
   states = new Map()
   failInsert = false
+  failRemove = false
+})
+
+it('removes only the selected setup and preserves it when removal fails', async () => {
+  const { repository, dispose } = createHarness()
+  const state = { providerId: 'dummy' as const, accountLabel: 'Account', connectedAt: '2026-01-01' }
+  await repository.saveState(firstProfile, state)
+  await repository.saveState(secondProfile, state)
+  failRemove = true
+  await expect(repository.removeState(firstProfile)).rejects.toThrow('removal failed')
+  expect(await repository.getState(firstProfile)).toEqual(state)
+  failRemove = false
+  await repository.removeState(firstProfile)
+  expect(await repository.getState(firstProfile)).toBeUndefined()
+  expect(await repository.getState(secondProfile)).toEqual(state)
+  await repository.removeState(firstProfile)
+  expect(dispose).toHaveBeenCalledTimes(8)
 })
 
 it('saves and reads setup state independently for each profile', async () => {
@@ -89,5 +112,5 @@ it('rejects invalid saved state', async () => {
     providerId: 'dummy',
     accountLabel: ' ',
     connectedAt: '2026-01-01T00:00:00.000Z',
-  })).rejects.toThrow('simulated setup state is invalid')
+  })).rejects.toThrow('sync setup state is invalid')
 })

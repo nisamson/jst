@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core'
 import { normalizeClaimInput } from '../storage/claims'
 import type { Claim, ClaimInput } from '../storage/claims'
+import { IconEdit, IconPlus } from '@tabler/icons-react'
 
 export default function ClaimFormDialog({
   claim,
@@ -97,7 +98,8 @@ export default function ClaimFormDialog({
           {error && <Alert color="red" title="Claim could not be saved">{error}</Alert>}
           <Group justify="flex-end">
             <Button type="button" variant="default" disabled={saving} onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={readOnly || saving} loading={saving}>{claim ? 'Save changes' : 'Create claim'}</Button>
+            <Button leftSection={claim ? <IconEdit size={16} aria-hidden /> : <IconPlus size={16} aria-hidden />} type="submit" disabled={readOnly || saving}
+              loading={saving}>{claim ? 'Save changes' : 'Create claim'}</Button>
           </Group>
         </Stack>
       </form>
