@@ -75,7 +75,7 @@ interface ProfileDirectory {
 }
 
 interface ProfileRepositoryDependencies {
-  initializeStorage: () => Promise<StorageSession>
+  initializeStorage: (signal?: AbortSignal) => Promise<StorageSession>
   getDirectory: () => Promise<ProfileDirectory>
   createId: () => string
   getPersistenceStatus: () => Promise<Persistence>
@@ -281,12 +281,14 @@ export function createProfileRepository(
     await directory.removeEntry(filename.slice(1))
   }
 
-  async function createProfile(input: CreateProfileInput): Promise<Profile> {
-    const normalized = normalizeProfile(input)
+  async function createLocalProfile(input: CreateProfileInput, backup?: Uint8Array<ArrayBuffer>): Promise<Profile> {
+    let normalized = normalizeProfile(input)
     const id = dependencies.createId()
     const filename = getProfileFilename(id)
     const createdAt = new Date().toISOString()
     const storage = await dependencies.initializeStorage()
+    let restoreDirectory: ProfileDirectory | undefined
+    let profile: Profile
     try {
       const directory = await dependencies.getDirectory()
       if (await containsFilename(directory, filename)) {
@@ -307,6 +309,7 @@ export function createProfileRepository(
         if (versionRow?.user_version !== 0 || existingTable) {
           throw new Error(`Profile ${id} already contains database data. Existing records were not changed.`)
         }
+        if (backup) restoreDirectory = directory
 
         await storage.execute(`
           CREATE TABLE profile_metadata (
@@ -322,6 +325,16 @@ export function createProfileRepository(
         await createActivitySchema(storage.execute)
         await storage.execute(ADD_CLAIM_OVERVIEW)
         await createEvidenceSchema(storage.execute)
+        if (backup) {
+          const restored = await storage.importProfile(backup)
+          if (typeof restored.label !== 'string' || (restored.real_name !== null && typeof restored.real_name !== 'string')) {
+            throw new Error('The restored profile metadata is invalid.')
+          }
+          normalized = normalizeProfile({
+            label: restored.label,
+            ...(typeof restored.real_name === 'string' ? { realName: restored.real_name } : {}),
+          })
+        }
         await storage.execute(
           'INSERT INTO profile_metadata (id, profile_id, label, real_name, created_at) VALUES (1, ?, ?, ?, ?)',
           [id, normalized.label, normalized.realName ?? null, createdAt],
@@ -343,11 +356,27 @@ export function createProfileRepository(
         throw error
       }
 
-      return { id, ...normalized, createdAt }
-    } finally {
-      await storage.dispose()
+      profile = { id, ...normalized, createdAt }
+    } catch (error) {
+      await storage.dispose().catch(() => {})
+      if (restoreDirectory) {
+        try {
+          await restoreDirectory.removeEntry(filename.slice(1))
+        } catch (cleanupError) {
+          throw new Error(
+            `Restore failed and its new temporary profile file could not be removed. Existing profiles were not changed. Retry profile discovery. ${errorMessage(cleanupError)}`,
+            { cause: cleanupError },
+          )
+        }
+      }
+      throw error
     }
+    await storage.dispose()
+    return profile
   }
+
+  const createProfile = (input: CreateProfileInput) => createLocalProfile(input)
+  const importProfile = (bytes: Uint8Array<ArrayBuffer>) => createLocalProfile({ label: 'Restoring profile' }, bytes)
 
   async function listProfiles(): Promise<ProfileListing> {
     const storage = await dependencies.initializeStorage()
@@ -456,7 +485,23 @@ export function createProfileRepository(
     }
   }
 
-  return { createProfile, deleteProfile, listProfiles, openProfile }
+  async function exportProfile(id: string, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+    const filename = getProfileFilename(id)
+    const storage = await dependencies.initializeStorage(signal)
+    try {
+      await storage.openDatabase(filename)
+      await storage.execute('PRAGMA query_only = ON')
+      await readProfile(storage, id)
+      signal?.throwIfAborted()
+      const bytes = await storage.exportProfile(id)
+      signal?.throwIfAborted()
+      return bytes
+    } finally {
+      await storage.dispose()
+    }
+  }
+
+  return { createProfile, deleteProfile, listProfiles, openProfile, exportProfile, importProfile }
 }
 
 const profileRepository = createProfileRepository()
@@ -465,3 +510,5 @@ export const createProfile = (input: CreateProfileInput) => profileRepository.cr
 export const deleteProfile = (id: string) => profileRepository.deleteProfile(id)
 export const listProfiles = () => profileRepository.listProfiles()
 export const openProfile = (id: string) => profileRepository.openProfile(id)
+export const exportProfile = (id: string, signal?: AbortSignal) => profileRepository.exportProfile(id, signal)
+export const importProfile = (bytes: Uint8Array<ArrayBuffer>) => profileRepository.importProfile(bytes)

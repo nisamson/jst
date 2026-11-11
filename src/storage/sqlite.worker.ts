@@ -3,6 +3,8 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 import type { SqlRow, StorageRequest, StorageResponse } from './protocol'
+import { createProfileSnapshot } from './sqlite-export'
+import { restoreProfileSnapshot } from './sqlite-import'
 
 let sqlite: Sqlite3Static | undefined
 let database: Database | undefined
@@ -45,6 +47,16 @@ async function handle(request: StorageRequest) {
           rowMode: 'object',
           returnValue: 'resultRows',
         })
+        break
+      case 'export-profile': {
+        if (!sqlite || !database) throw new Error('Open a local database before exporting it.')
+        const bytes = createProfileSnapshot(sqlite, database, request.profileId)
+        scope.postMessage({ id: request.id, rows, bytes } satisfies StorageResponse, [bytes.buffer])
+        return
+      }
+      case 'import-profile':
+        if (!sqlite || !database) throw new Error('Open a new local database before restoring a profile.')
+        rows = [restoreProfileSnapshot(sqlite, database, request.bytes)]
         break
       case 'close':
         database?.close()

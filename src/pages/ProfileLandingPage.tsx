@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActionIcon, Alert, Anchor, Badge, Button, Container, Group, Loader, Paper, SimpleGrid, Stack, Text, Title, Tooltip } from '@mantine/core'
-import { IconCloudCheck, IconCloudOff, IconFolderOpen, IconTrash } from '@tabler/icons-react'
+import { IconCloudCheck, IconCloudOff, IconDownload, IconFolderOpen, IconTrash } from '@tabler/icons-react'
 import CreateProfileForm from '../components/CreateProfileForm'
 import ConfirmDeletionDialog from '../components/ConfirmDeletionDialog'
 import SimulatedSyncDialog from '../components/SimulatedSyncDialog'
+import ExportProfileDialog from '../components/ExportProfileDialog'
+import ImportProfileDialog from '../components/ImportProfileDialog'
 import { useRequestStoragePersistence } from '../components/storage-persistence-context'
 import type { Profile, ProfileListing } from '../storage/profiles'
 import type { CreateProfileInput } from '../storage/profiles'
-import { createProfile, deleteProfile, listProfiles } from '../storage/profiles'
+import { createProfile, deleteProfile, importProfile, listProfiles } from '../storage/profiles'
 import AdvancedDetails from '../components/AdvancedDetails'
 
 type DiscoveryState =
@@ -42,6 +44,8 @@ function ProfileDiscovery({
   const [creatingProfile, setCreatingProfile] = useState(false)
   const [setupFlow, setSetupFlow] = useState<SetupFlow>()
   const [profileToDelete, setProfileToDelete] = useState<Profile>()
+  const [profileToExport, setProfileToExport] = useState<Profile>()
+  const [importingProfile, setImportingProfile] = useState(false)
   const requestStoragePersistence = useRequestStoragePersistence()
 
   useEffect(() => {
@@ -64,6 +68,12 @@ function ProfileDiscovery({
   async function saveProfile(input: CreateProfileInput) {
     await requestStoragePersistence()
     const profile = await createProfile(input)
+    addProfile(profile)
+    setCreatingProfile(false)
+    setSetupFlow({ profile, continueToClaims: true })
+  }
+
+  function addProfile(profile: Profile) {
     setDiscovery((current) => {
       if (current.state !== 'loaded') return current
       return {
@@ -76,8 +86,13 @@ function ProfileDiscovery({
         },
       }
     })
-    setCreatingProfile(false)
-    setSetupFlow({ profile, continueToClaims: true })
+  }
+
+  async function restoreProfile(bytes: Uint8Array<ArrayBuffer>) {
+    await requestStoragePersistence()
+    const profile = await importProfile(bytes)
+    addProfile(profile)
+    return profile
   }
 
   function finishSetupFlow() {
@@ -136,6 +151,9 @@ function ProfileDiscovery({
             </Stack>
             <Group gap="xs">
               <Button variant="light" onClick={onRetry}>Retry profile discovery</Button>
+              <Button variant="light" disabled={!listing} onClick={() => setImportingProfile(true)}>
+                Restore from backup
+              </Button>
               <Button
                 variant="filled"
                 aria-expanded={creatingProfile}
@@ -208,6 +226,12 @@ function ProfileDiscovery({
                             : <IconCloudOff size={20} aria-hidden />}
                         </ActionIcon>
                       </Tooltip>
+                      <Tooltip label="Export profile database" events={{ hover: true, focus: true, touch: true }}>
+                        <ActionIcon size="lg" variant="light" aria-label={`Export database for ${profile.label}`}
+                          onClick={() => setProfileToExport(profile)}>
+                          <IconDownload size={20} aria-hidden />
+                        </ActionIcon>
+                      </Tooltip>
                       <Tooltip label="Delete profile" events={{ hover: true, focus: true, touch: true }}>
                         <ActionIcon size="lg" color="red" variant="light" aria-label={`Delete ${profile.label}`}
                           onClick={() => setProfileToDelete(profile)}>
@@ -275,6 +299,9 @@ function ProfileDiscovery({
           onConfirm={() => removeProfile(profileToDelete)}
         />
       )}
+      {profileToExport && <ExportProfileDialog profile={profileToExport} onClose={() => setProfileToExport(undefined)} />}
+      {importingProfile && <ImportProfileDialog onImport={restoreProfile} onOpenProfile={onOpenProfile}
+        onClose={() => setImportingProfile(false)} />}
     </Container>
   )
 }

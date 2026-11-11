@@ -60,6 +60,23 @@ navigation inside the `StorageStatus` capability boundary.
   version 4 activity table/index; profile initialization and migration share it.
 - `src/storage/profiles.ts` owns profile create/list/open operations. Each
   profile has a stable ID and a separate SQLite database in OPFS.
+- `ExportProfileDialog` offers a local SQLite download for each readable
+  profile. `profiles.ts` opens the source without migration, and
+  `sqlite-export.ts` uses SQLite backup to create an in-memory snapshot,
+  verifies its known schema, removes local sync setup, compacts it, and checks
+  integrity before downloading. The export is unencrypted and includes personal
+  records and attachments. `ImportProfileDialog` restores a selected backup
+  locally as a separate profile with a new ID and a restored-copy label, never
+  replacing or merging existing profiles. `sqlite-import.ts` reads the backup
+  in a read-only in-memory connection with trusted schema disabled, checks its
+  schema/integrity and record/evidence rules, and copies only known records into
+  freshly created current-schema tables. It never installs uploaded schema,
+  triggers, or sync setup. Supported legacy backups restore into the current
+  schema without changing the source file. Restore commits atomically and
+  removes its newly created file on failure after closing the worker.
+  Both operations currently require full snapshot buffers; hundreds-of-megabytes
+  profiles have not been validated. Update the shared schema allowlist and
+  export sanitization/import mapping when profile schemas change.
 - `src/storage/simulated-sync-state.ts` persists successful simulated setup
   inside that profile database; `src/sync/simulated-provider.ts` is a
   display-only dummy provider and never transfers profile data.
@@ -70,7 +87,7 @@ navigation inside the `StorageStatus` capability boundary.
   `sqlite.worker.ts` initializes SQLite WASM and uses the OPFS VFS. Do not
   substitute localStorage or an in-memory database.
 - Persistent browser storage is optional and is requested only after the user
-  initiates profile creation. Read-only capability checks and profile
+  initiates profile creation or restore. Read-only capability checks and profile
   discovery do not prompt. A denied or unavailable persistence request warns
   without blocking local use.
 - `src/main.tsx` selects diagnostics and Markdown legal pages;
@@ -131,6 +148,8 @@ Evidence policy/service tests are in `src/storage/evidence-model.test.ts` and
 `evidence.test.ts`; browser UI/download/cancellation/retry coverage lives in
 `tests/browser/activity-evidence.spec.ts`. Real SQLite migration, ownership,
 and cascading cleanup are covered by `tests/browser/evidence-storage.spec.ts`.
+Profile export/restore and real SQLite snapshot checks are in
+`tests/browser/profile-export.spec.ts` and `src/storage/sqlite-import.test.ts`.
 
 ## Manual claims testing
 
