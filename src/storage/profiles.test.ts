@@ -65,6 +65,8 @@ beforeEach(() => {
   failInsert = false
   failRemove = false
   storage = {
+    importProfile: vi.fn().mockResolvedValue({ label: 'Backup (restored copy)', real_name: 'Alex Example' }),
+    exportProfile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
     async openDatabase(filename, options) {
       let database = databases.get(filename)
       if (!database && options?.create) {
@@ -206,11 +208,76 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
   expect(initializeStorage).toHaveBeenCalledTimes(4)
 })
 
+it('restores into a new profile and leaves the original profile and sync setup unchanged', async () => {
+  const { repository } = createHarness()
+  const original = await repository.createProfile({ label: 'Original' })
+  const source = databases.get(`/profile-${original.id}.sqlite3`)!
+  const syncState = { provider_id: 'dummy', account_label: 'Original account', connected_at: '2026-01-01' }
+  source.syncState = syncState
+  const bytes = new Uint8Array([1, 2, 3])
+  const restored = await repository.importProfile(bytes)
+  expect(restored).toMatchObject({ id: profileIds[1], label: 'Backup (restored copy)', realName: 'Alex Example' })
+  expect(storage.importProfile).toHaveBeenCalledWith(bytes)
+  expect(source.profile?.label).toBe('Original')
+  expect(source.syncState).toEqual(syncState)
+  const session = await repository.openProfile(restored.id)
+  expect(session.access.syncConnected).toBe(false)
+  await session.dispose()
+})
+
+it('removes only the newly created profile on restore failure and supports retry', async () => {
+  const { repository } = createHarness([profileIds[0], profileIds[1], '33333333-3333-4333-8333-333333333333'])
+  const original = await repository.createProfile({ label: 'Original' })
+  vi.mocked(storage.importProfile).mockRejectedValueOnce(new Error('Invalid backup'))
+  await expect(repository.importProfile(new Uint8Array([1]))).rejects.toThrow('Invalid backup')
+  expect([...databases.keys()]).toEqual([`/profile-${original.id}.sqlite3`])
+  const restored = await repository.importProfile(new Uint8Array([2]))
+  expect(restored.id).not.toBe(original.id)
+  expect((await repository.listProfiles()).profiles).toHaveLength(2)
+})
+
+it('does not import or remove an existing profile when generated IDs collide', async () => {
+  const { repository } = createHarness([profileIds[0], profileIds[0]])
+  const original = await repository.createProfile({ label: 'Original' })
+  await expect(repository.importProfile(new Uint8Array([1]))).rejects.toThrow('already exists')
+  expect(storage.importProfile).not.toHaveBeenCalled()
+  expect(databases.get(`/profile-${original.id}.sqlite3`)?.profile?.label).toBe('Original')
+})
+
+it('reports failed cleanup without deleting an existing profile', async () => {
+  const { repository } = createHarness()
+  const original = await repository.createProfile({ label: 'Original' })
+  failRemove = true
+  vi.mocked(storage.importProfile).mockRejectedValueOnce(new Error('Invalid backup'))
+  await expect(repository.importProfile(new Uint8Array([1]))).rejects.toThrow('could not be removed')
+  expect(databases.get(`/profile-${original.id}.sqlite3`)?.profile?.label).toBe('Original')
+})
+
 it('rejects empty labels before initializing storage', async () => {
   const { repository, initializeStorage } = createHarness()
   await expect(repository.createProfile({ label: '  ' })).rejects.toThrow(/profile label/)
   expect(initializeStorage).not.toHaveBeenCalled()
   expect(databases.size).toBe(0)
+})
+
+it('exports the selected profile without migration or requiring write access', async () => {
+  const { repository } = createHarness(profileIds, 'denied')
+  const profile = await repository.createProfile({ label: 'Legacy profile' })
+  const database = databases.get(`/profile-${profile.id}.sqlite3`)
+  if (!database) throw new Error('Test profile is missing.')
+  database.version = 5
+  const close = vi.spyOn(storage, 'dispose')
+  expect(await repository.exportProfile(profile.id)).toEqual(new Uint8Array([1, 2, 3]))
+  expect(database.version).toBe(5)
+  expect(database.queryOnly).toBe(true)
+  expect(storage.exportProfile).toHaveBeenCalledWith(profile.id)
+  expect(close).toHaveBeenCalledOnce()
+
+  vi.mocked(storage.exportProfile).mockRejectedValueOnce(new Error('Snapshot failed'))
+  await expect(repository.exportProfile(profile.id)).rejects.toThrow('Snapshot failed')
+  expect(close).toHaveBeenCalledTimes(2)
+  expect(database.version).toBe(5)
+  await expect(repository.exportProfile('../invalid')).rejects.toThrow(/invalid/)
 })
 
 it('does not overwrite an existing profile when an ID collides', async () => {

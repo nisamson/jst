@@ -11,7 +11,8 @@ class TestWorker extends EventTarget {
     if (this.silent) return
     const response: StorageResponse = this.replyError
       ? { id: request.id, error: this.replyError }
-      : { id: request.id, rows: [] }
+      : { id: request.id, rows: request.type === 'import-profile' ? [{ label: 'Restored', real_name: null }] : [],
+        ...(request.type === 'export-profile' ? { bytes: new Uint8Array([1, 2, 3]) } : {}) }
     queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: response })))
   })
 
@@ -72,6 +73,30 @@ it('propagates SQL errors without terminating a usable session', async () => {
   await expect(session.execute('INSERT INTO records VALUES (?)', ['example'])).rejects.toThrow('disk is full')
   expect(worker.terminate).not.toHaveBeenCalled()
   worker.replyError = undefined
+  await session.dispose()
+})
+
+it('returns exported bytes and cancels an in-flight export by terminating its worker', async () => {
+  const controller = new AbortController()
+  const session = await initializeStorage(controller.signal)
+  const worker = TestWorker.instances[0]
+  expect(await session.exportProfile('profile-id')).toEqual(new Uint8Array([1, 2, 3]))
+  worker.silent = true
+  const exported = session.exportProfile('profile-id')
+  const rejection = expect(exported).rejects.toMatchObject({ name: 'AbortError' })
+  controller.abort()
+  await rejection
+  expect(worker.terminate).toHaveBeenCalledOnce()
+  await session.dispose()
+})
+
+it('transfers imported bytes to the worker and returns restored metadata', async () => {
+  const session = await initializeStorage()
+  const bytes = new Uint8Array([1, 2, 3])
+  expect(await session.importProfile(bytes)).toEqual({ label: 'Restored', real_name: null })
+  expect(TestWorker.instances[0].postMessage).toHaveBeenLastCalledWith(
+    { id: 2, type: 'import-profile', bytes }, [bytes.buffer],
+  )
   await session.dispose()
 })
 

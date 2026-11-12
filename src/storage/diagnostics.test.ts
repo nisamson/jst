@@ -11,6 +11,8 @@ beforeEach(() => {
   storage = {
     openDatabase: vi.fn().mockResolvedValue(undefined),
     execute: vi.fn().mockResolvedValue([]),
+    exportProfile: vi.fn(),
+    importProfile: vi.fn(),
     closeDatabase: vi.fn().mockResolvedValue(undefined),
     dispose: vi.fn().mockResolvedValue(undefined),
   }
