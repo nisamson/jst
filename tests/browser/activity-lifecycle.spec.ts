@@ -374,11 +374,22 @@ test('load errors do not look empty and can be retried; legacy read-only claims 
   await sql(page, profileId, `UPDATE activities SET updated_at = '${original[0]!.updated_at}'`)
   await activities.getByRole('button', { name: 'Retry loading activities', exact: true }).click()
   await expect(activities).toContainText('Stored activity')
-  await sql(page, profileId, 'DROP TABLE activity_files')
-  await sql(page, profileId, 'DROP TABLE activity_links')
-  await sql(page, profileId, 'DROP TABLE activities')
-  await sql(page, profileId, 'ALTER TABLE claims DROP COLUMN overview')
-  await sql(page, profileId, 'PRAGMA user_version = 3')
+  await page.evaluate(async (id) => {
+    const path = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(path)
+    const session = await storage.openProfile(id)
+    try {
+      await session.execute('DROP TABLE activity_files')
+      await session.execute('DROP TABLE activity_links')
+      await session.execute('DROP TABLE activities')
+      await session.execute('DROP TABLE storage_provider_connection')
+      await session.execute(`CREATE TABLE simulated_sync_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+        account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
+      await session.execute('ALTER TABLE claims DROP COLUMN overview')
+      await session.execute('PRAGMA user_version = 3')
+    } finally { await session.dispose() }
+  }, profileId)
   await page.addInitScript(() => {
     Object.defineProperty(navigator.storage, 'persisted', { configurable: true, value: async () => false })
   })

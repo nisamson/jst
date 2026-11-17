@@ -173,7 +173,7 @@ test('reports setup persistence failures and allows retry without changing the p
     try {
       await session.execute(`
         CREATE TRIGGER reject_simulated_setup
-        BEFORE INSERT ON simulated_sync_setup
+        BEFORE INSERT ON storage_provider_connection
         BEGIN
           SELECT RAISE(FAIL, 'Simulated persistence failure');
         END
@@ -208,7 +208,7 @@ test('reports setup persistence failures and allows retry without changing the p
     try {
       await session.execute(`
         CREATE TRIGGER reject_sync_removal
-        BEFORE DELETE ON simulated_sync_setup
+        BEFORE DELETE ON storage_provider_connection
         BEGIN
           SELECT RAISE(FAIL, 'Removal failed');
         END

@@ -94,7 +94,7 @@ test('downloads a consistent profile database with evidence and excludes sync se
     const file = query(db, 'SELECT name, description, bytes FROM activity_files')[0]
     expect(file).toMatchObject({ name: 'proof.bin', description: 'Proof description' })
     expect(Array.from(file!.bytes as Uint8Array)).toEqual([0, 1, 128, 255])
-    expect(query(db, 'SELECT count(*) AS count FROM simulated_sync_setup')[0]).toMatchObject({ count: 0 })
+    expect(query(db, 'SELECT count(*) AS count FROM storage_provider_connection')[0]).toMatchObject({ count: 0 })
   } finally { db.close() }
   expect(data.includes(Buffer.from('Simulated account'))).toBe(false)
   expect(data.includes(Buffer.from('Other profile claim'))).toBe(false)
@@ -245,7 +245,7 @@ test('reports unsafe schema without changing the source and permits retry', asyn
       const tables = await session.execute("SELECT name FROM sqlite_schema WHERE name = 'unexpected_private_data'")
       if (tables.length !== 1) throw new Error('The source database was changed.')
       await session.execute('DROP TABLE unexpected_private_data')
-      await session.execute('ALTER TABLE simulated_sync_setup ADD COLUMN unexpected_secret TEXT')
+      await session.execute('ALTER TABLE storage_provider_connection ADD COLUMN unexpected_secret TEXT')
     } finally { await session.dispose() }
   }, id)
   await dialog.getByRole('button', { name: 'Download database', exact: true }).click()
@@ -254,7 +254,7 @@ test('reports unsafe schema without changing the source and permits retry', asyn
     const path = '/src/storage/profiles.ts'
     const profiles: typeof import('../../src/storage/profiles') = await import(path)
     const session = await profiles.openProfile(profileId)
-    try { await session.execute('ALTER TABLE simulated_sync_setup DROP COLUMN unexpected_secret') } finally { await session.dispose() }
+    try { await session.execute('ALTER TABLE storage_provider_connection DROP COLUMN unexpected_secret') } finally { await session.dispose() }
   }, id)
   await page.evaluate(() => {
     const original = URL.createObjectURL
@@ -388,7 +388,7 @@ test('exports a consistent snapshot during concurrent writes without migrating l
       await session.execute('DROP TABLE activity_files')
       await session.execute('DROP TABLE activity_links')
       await session.execute('DROP TABLE activities')
-      await session.execute('DROP TABLE simulated_sync_setup')
+      await session.execute('DROP TABLE storage_provider_connection')
       await session.execute('DROP TABLE claims')
       await session.execute('PRAGMA user_version = 1')
     } finally { await session.dispose() }

@@ -29,6 +29,10 @@ test('preserves v5 read-only activities, rolls back a failed v6 migration, and u
       })).id
       await session.execute('DROP TABLE activity_files')
       await session.execute('DROP TABLE activity_links')
+      await session.execute('DROP TABLE storage_provider_connection')
+      await session.execute(`CREATE TABLE simulated_sync_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+        account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
       await session.execute('PRAGMA user_version = 5')
     } finally { await session.dispose() }
 
@@ -87,7 +91,7 @@ test('preserves v5 read-only activities, rolls back a failed v6 migration, and u
     version: [{ user_version: 5 }], tables: [],
     activities: [{ id: result.activityId, documentation_description: 'Plain text stays plain text' }],
   })
-  expect(result.version).toEqual([{ user_version: 6 }])
+  expect(result.version).toEqual([{ user_version: 7 }])
   expect(result.saved.id).toBe(result.activityId)
   expect(result.saved.evidence?.files).toHaveLength(1)
   await page.goto(`/claims?profile=${result.profileId}&claim=${result.claimId}`)

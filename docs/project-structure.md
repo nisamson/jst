@@ -18,7 +18,7 @@ navigation inside the `StorageStatus` capability boundary.
 | App shell | `src/App.tsx`, `src/main.tsx` | Root component, Mantine setup, page selection and lightweight history navigation |
 | Pages | `src/pages/`, `src/components/LegalDocumentPage.tsx` | `ProfileLandingPage` discovers and creates profiles; `ClaimsPage` opens a selected profile; `StorageDiagnosticsPage` hosts storage diagnostics; `LegalDocumentPage` renders Markdown policies |
 | UI components | `src/components/` | Reusable form, simulated setup dialog, and storage UI; storage status provides the persistence-request boundary |
-| Storage and provider services | `src/storage/`, `src/sync/` | Profile persistence, profile-scoped simulated setup state, dummy-provider behavior, capability checks, and diagnostics data operations |
+| Storage and provider services | `src/storage/`, `src/sync/` | Profile persistence, provider-neutral connection state and adapter contracts, simulated-provider behavior, capability checks, and diagnostics data operations |
 | SQLite worker | `src/storage/sqlite.worker.ts`, `src/storage/protocol.ts` | Worker-side SQLite WASM/OPFS operations and typed request/response messages |
 | PWA shell | `vite.config.ts`, `pwa/service-worker.js`, `src/components/PwaStatus.tsx`, `public/pwa-*.svg` | Manifest, production service-worker precache, offline status, and staged update messaging |
 | Tests | `src/**/*.test.ts`, `src/**/*.test.tsx`, `tests/browser/` | Vitest service/component tests and Playwright real-browser tests |
@@ -59,29 +59,37 @@ navigation inside the `StorageStatus` capability boundary.
   create/update/delete operations. `src/storage/activity-schema.ts` defines the
   version 4 activity table/index; profile initialization and migration share it.
 - `src/storage/profiles.ts` owns profile create/list/open operations. Each
-  profile has a stable ID and a separate SQLite database in OPFS.
+  profile has a stable ID and a separate SQLite database in OPFS. The v7
+  `storage_provider_connection` table stores one non-secret provider/account
+  connection per profile; the migration carries forward existing simulated
+  setup state. `storage-provider-connections.ts` provides profile-scoped
+  connection operations, while `provider-connection-schema.ts` defines its
+  schema.
 - `ExportProfileDialog` offers a local SQLite download for each readable
   profile. `profiles.ts` opens the source without migration, and
   `sqlite-export.ts` uses SQLite backup to create an in-memory snapshot,
-  verifies its known schema, removes local sync setup, compacts it, and checks
-  integrity before downloading. The export is unencrypted and includes personal
-  records and attachments. `ImportProfileDialog` restores a selected backup
-  locally as a separate profile with a new ID and a restored-copy label, never
+  verifies its known schema, removes local provider connection state, compacts
+  it, and checks integrity before downloading. The export is unencrypted and
+  includes personal records and attachments. `ImportProfileDialog` restores a
+  selected backup locally as a separate profile with a new ID and a restored-copy label, never
   replacing or merging existing profiles. `sqlite-import.ts` reads the backup
   in a read-only in-memory connection with trusted schema disabled, checks its
   schema/integrity and record/evidence rules, and copies only known records into
   freshly created current-schema tables. It never installs uploaded schema,
-  triggers, or sync setup. Supported legacy backups restore into the current
-  schema without changing the source file. Restore commits atomically and
+  triggers, or provider connection state. Supported legacy backups restore into
+  the current schema without changing the source file. Restore commits atomically and
   removes its newly created file on failure after closing the worker.
   Both operations currently require full snapshot buffers; hundreds-of-megabytes
   profiles have not been validated. Update the shared schema allowlist and
   export sanitization/import mapping when profile schemas change.
-- `src/storage/simulated-sync-state.ts` persists successful simulated setup
-  inside that profile database; `src/sync/simulated-provider.ts` is a
-  display-only dummy provider and never transfers profile data.
-  Profile discovery reports each setup state separately from profile metadata;
-  removing a setup deletes only its local configuration. Without persistent
+- `src/sync/storage-provider.ts` defines provider-neutral lifecycle, capability,
+  file-operation, progress, and normalized-error contracts;
+  `in-memory-storage-provider.ts` is a test adapter. The simulated provider
+  conforms to the adapter contract but does not transfer profile data.
+  `src/storage/simulated-sync-state.ts` maps simulated setup to the generic
+  profile connection slot.
+  Profile discovery reports each connection state separately from profile
+  metadata; disconnecting removes only its local configuration. Without persistent
   storage permission, reopening that profile becomes read-only.
 - `src/storage/local-storage.ts` owns the browser-to-worker session boundary;
   `sqlite.worker.ts` initializes SQLite WASM and uses the OPFS VFS. Do not

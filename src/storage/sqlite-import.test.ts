@@ -27,9 +27,9 @@ async function database(source = false) {
     CREATE TABLE claims (
       id TEXT PRIMARY KEY NOT NULL, identifier TEXT NOT NULL, created_at TEXT NOT NULL,
       claim_start_date TEXT, overview TEXT);
-    CREATE TABLE simulated_sync_setup (
+    CREATE TABLE storage_provider_connection (
       id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL,
-      account_label TEXT NOT NULL, connected_at TEXT NOT NULL);`)
+      account_label TEXT NOT NULL, location_id TEXT, connected_at TEXT NOT NULL);`)
   const execute: StorageSession['execute'] = async (sql) => {
     db.exec(sql)
     return []
@@ -39,9 +39,9 @@ async function database(source = false) {
   if (source) {
     db.exec({ sql: 'INSERT INTO profile_metadata VALUES (1, ?, ?, ?, ?)',
       bind: [profileId, 'My profile', 'Alex Example', '2026-01-01T00:00:00Z'] })
-    db.exec(`PRAGMA user_version = 6;
+    db.exec(`PRAGMA user_version = 7;
       INSERT INTO claims VALUES ('claim-1', 'My claim', '2026-01-01', '2026-01-04', 'My overview');
-      INSERT INTO simulated_sync_setup VALUES (1, 'dummy', 'Private account', '2026-01-01');`)
+      INSERT INTO storage_provider_connection VALUES (1, 'drive.example', 'Private account', 'location-1', '2026-01-01');`)
     db.exec({ sql: `INSERT INTO activities (id, claim_id, activity_date, kind, created_at, updated_at, activity_description)
       VALUES (?, 'claim-1', '2026-01-04', 'other_activity', '2026-01-01', '2026-01-01', 'Workshop')`, bind: [activityId] })
     db.exec({ sql: 'INSERT INTO activity_links VALUES (?, ?, 0, ?, ?)',
@@ -61,7 +61,7 @@ function rows(db: Database, sql: string) {
   return db.exec({ sql, rowMode: 'object', returnValue: 'resultRows' })
 }
 
-it('round trips a real exported snapshot into canonical tables without sync setup or the original profile identity', async () => {
+it('round trips a real exported snapshot without provider connection state or the original profile identity', async () => {
   const source = await database(true)
   const target = await database()
   const snapshot = createProfileSnapshot(sqlite, source, profileId)
@@ -74,16 +74,24 @@ it('round trips a real exported snapshot into canonical tables without sync setu
   const [file] = rows(target, 'SELECT description, bytes FROM activity_files')
   expect(file.description).toBe('My proof')
   expect(Array.from(file.bytes as Uint8Array)).toEqual([0, 1, 128, 255])
-  expect(rows(target, 'SELECT * FROM simulated_sync_setup')).toEqual([])
-  expect(rows(source, 'SELECT account_label FROM simulated_sync_setup')).toEqual([{ account_label: 'Private account' }])
+  expect(rows(target, 'SELECT * FROM storage_provider_connection')).toEqual([])
+  expect(rows(source, 'SELECT account_label FROM storage_provider_connection')).toEqual([{ account_label: 'Private account' }])
 })
 
-it.each([1, 2, 3, 4, 5])('restores version-%i exports into current tables without changing the source', async (version) => {
+it.each([1, 2, 3, 4, 5, 6, 7])('restores version-%i exports into current tables without changing the source', async (version) => {
   const source = await database(true)
-  source.exec('DROP TABLE activity_files; DROP TABLE activity_links')
   if (version < 5) source.exec('ALTER TABLE claims DROP COLUMN overview')
+  if (version < 6) source.exec('DROP TABLE activity_files; DROP TABLE activity_links')
   if (version < 4) source.exec('DROP TABLE activities')
-  if (version < 3) source.exec('DROP TABLE simulated_sync_setup')
+  if (version < 7) {
+    source.exec('DROP TABLE storage_provider_connection')
+    if (version >= 3) {
+      source.exec(`CREATE TABLE simulated_sync_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL,
+        account_label TEXT NOT NULL, connected_at TEXT NOT NULL);
+        INSERT INTO simulated_sync_setup VALUES (1, 'dummy', 'Private account', '2026-01-01');`)
+    }
+  }
   if (version < 2) source.exec('DROP TABLE claims')
   source.exec(`PRAGMA user_version = ${version}`)
   const target = await database()
@@ -120,7 +128,7 @@ it('rejects invalid files, unsupported versions, and unexpected executable schem
   expect(() => restoreProfileSnapshot(sqlite, target, new Uint8Array([1, 2, 3]))).toThrow('valid exported SQLite')
   source.exec('PRAGMA user_version = 99')
   expect(() => restoreProfileSnapshot(sqlite, target, bytes(source))).toThrow('version')
-  source.exec(`PRAGMA user_version = 6;
+  source.exec(`PRAGMA user_version = 7;
     CREATE TRIGGER unwanted AFTER INSERT ON claims BEGIN DELETE FROM activities; END;`)
   expect(() => restoreProfileSnapshot(sqlite, target, bytes(source))).toThrow('unexpected database schema')
   expect(rows(target, 'SELECT * FROM claims')).toEqual([])

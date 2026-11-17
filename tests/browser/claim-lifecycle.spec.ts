@@ -335,7 +335,7 @@ test('claim deletion cascades atomically and preserves other claims, activities,
       return {
         claims: await session.execute('SELECT id FROM claims'),
         activities: await session.execute('SELECT id FROM activities ORDER BY id'),
-        sync: await session.execute('SELECT account_label FROM simulated_sync_setup'),
+        sync: await session.execute('SELECT account_label FROM storage_provider_connection'),
         profile: session.profile,
         violations: await session.execute('PRAGMA foreign_key_check'),
       }
