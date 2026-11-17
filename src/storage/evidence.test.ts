@@ -63,6 +63,9 @@ it('rejects read-only activity/evidence changes at the profile service boundary'
   vi.mocked(openProfile).mockResolvedValue({
     execute, dispose, profile: { id: 'profile', label: 'Read only', createdAt: '' },
     access: { mode: 'read-only', persistence: 'denied', syncConnected: false },
+    getStorageProviderConnection: vi.fn(),
+    connectStorageProvider: vi.fn(),
+    disconnectStorageProvider: vi.fn(),
     saveSimulatedSyncState: vi.fn(),
   })
   await expect(saveProfileActivity('profile', 'claim', input, activityId, { links: [], files: [] })).rejects.toThrow(/read-only/)

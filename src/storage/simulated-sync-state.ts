@@ -20,21 +20,13 @@ export function createSimulatedSyncStateRepository(
     const profile = await dependencies.openProfile(profileId)
     try {
       if (!profile.access.syncConnected) return undefined
-      const [row] = await profile.execute(
-        'SELECT provider_id, account_label, connected_at FROM simulated_sync_setup WHERE id = 1',
-      )
-      if (!row) return undefined
-      if (
-        row.provider_id !== 'dummy'
-        || typeof row.account_label !== 'string'
-        || typeof row.connected_at !== 'string'
-      ) {
-        throw new Error('The saved sync setup state is invalid.')
-      }
+      const connection = await profile.getStorageProviderConnection()
+      if (!connection) return undefined
+      if (connection.providerId !== 'dummy') throw new Error('This profile is connected to a different storage provider.')
       return {
         providerId: 'dummy',
-        accountLabel: row.account_label,
-        connectedAt: row.connected_at,
+        accountLabel: connection.accountLabel,
+        connectedAt: connection.connectedAt,
       }
     } finally {
       await profile.dispose()
@@ -48,7 +40,7 @@ export function createSimulatedSyncStateRepository(
 
     const profile = await dependencies.openProfile(profileId)
     try {
-      await profile.saveSimulatedSyncState(state.accountLabel, state.connectedAt)
+      await profile.connectStorageProvider(state)
     } finally {
       await profile.dispose()
     }
@@ -57,9 +49,7 @@ export function createSimulatedSyncStateRepository(
   async function removeState(profileId: string): Promise<void> {
     const profile = await dependencies.openProfile(profileId)
     try {
-      if (profile.access.syncConnected) {
-        await profile.execute('DELETE FROM simulated_sync_setup WHERE id = 1')
-      }
+      await profile.disconnectStorageProvider('dummy')
     } finally {
       await profile.dispose()
     }

@@ -1,49 +1,49 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import type { SqlRow } from './protocol'
 import { createSimulatedSyncStateRepository } from './simulated-sync-state'
-import type { SimulatedSyncState } from './simulated-sync-state'
+import type { StorageProviderConnection } from '../sync/storage-provider'
 
 const firstProfile = '11111111-1111-4111-8111-111111111111'
 const secondProfile = '22222222-2222-4222-8222-222222222222'
-let states: Map<string, SimulatedSyncState>
+let states: Map<string, StorageProviderConnection>
 let failInsert: boolean
 let failRemove: boolean
 
 function createHarness() {
   const dispose = vi.fn(async () => {})
-  const execute = vi.fn(async (sql: string): Promise<SqlRow[]> => {
-    if (sql.startsWith('SELECT provider_id')) {
-      const state = states.get(activeProfile)
-      return state
-        ? [{ provider_id: state.providerId, account_label: state.accountLabel, connected_at: state.connectedAt }]
-        : []
-    }
-    if (sql.startsWith('DELETE FROM simulated_sync_setup')) {
-      if (failRemove) throw new Error('removal failed')
-      states.delete(activeProfile)
-      return []
-    }
-    throw new Error(`Unexpected SQL in test: ${sql}`)
-  })
   let activeProfile = ''
-  const saveSimulatedSyncState = vi.fn(async (accountLabel: string, connectedAt: string) => {
+  const connectStorageProvider = vi.fn(async (connection: StorageProviderConnection) => {
     if (failInsert) throw new Error('disk is full')
-    states.set(activeProfile, { providerId: 'dummy', accountLabel, connectedAt })
+    const existing = states.get(activeProfile)
+    if (existing && (existing.providerId !== connection.providerId || existing.accountLabel !== connection.accountLabel)) {
+      throw new Error('already connected')
+    }
+    states.set(activeProfile, connection)
+  })
+  const disconnectStorageProvider = vi.fn(async (providerId?: string) => {
+    if (failRemove) throw new Error('removal failed')
+    const existing = states.get(activeProfile)
+    if (existing && providerId === existing.providerId) states.delete(activeProfile)
   })
   const openProfile = vi.fn(async (profileId: string) => {
     activeProfile = profileId
     return {
       profile: { id: profileId, label: profileId, createdAt: '2026-01-01T00:00:00.000Z' },
       access: { mode: 'read-only' as const, persistence: 'denied' as const, syncConnected: states.has(profileId) },
-      execute,
-      saveSimulatedSyncState,
+      execute: vi.fn(),
+      getStorageProviderConnection: async () => states.get(profileId),
+      connectStorageProvider: async (connection: StorageProviderConnection) => {
+        await connectStorageProvider(connection)
+        return connection
+      },
+      disconnectStorageProvider,
+      saveSimulatedSyncState: vi.fn(),
       dispose,
     }
   })
   return {
     repository: createSimulatedSyncStateRepository({ openProfile }),
-    execute,
-    saveSimulatedSyncState,
+    connectStorageProvider,
+    disconnectStorageProvider,
     dispose,
     openProfile,
   }
@@ -94,7 +94,7 @@ it('saves and reads setup state independently for each profile', async () => {
 })
 
 it('reports failed writes and disposes the profile session', async () => {
-  const { repository, saveSimulatedSyncState, dispose } = createHarness()
+  const { repository, connectStorageProvider, dispose } = createHarness()
   failInsert = true
 
   await expect(repository.saveState(firstProfile, {
@@ -102,7 +102,7 @@ it('reports failed writes and disposes the profile session', async () => {
     accountLabel: 'Simulated account',
     connectedAt: '2026-01-01T00:00:00.000Z',
   })).rejects.toThrow('disk is full')
-  expect(saveSimulatedSyncState).toHaveBeenCalledOnce()
+  expect(connectStorageProvider).toHaveBeenCalledOnce()
   expect(dispose).toHaveBeenCalledOnce()
 })
 
@@ -113,4 +113,20 @@ it('rejects invalid saved state', async () => {
     accountLabel: ' ',
     connectedAt: '2026-01-01T00:00:00.000Z',
   })).rejects.toThrow('sync setup state is invalid')
+})
+
+it('does not expose or replace a connection owned by another provider', async () => {
+  const { repository, openProfile } = createHarness()
+  states.set(firstProfile, {
+    providerId: 'other-provider',
+    accountLabel: 'Other account',
+    connectedAt: '2026-01-01T00:00:00.000Z',
+  })
+  await expect(repository.getState(firstProfile)).rejects.toThrow('different storage provider')
+  const profile = await openProfile(firstProfile)
+  await expect(profile.connectStorageProvider({
+    providerId: 'dummy',
+    accountLabel: 'New account',
+    connectedAt: '2026-01-02T00:00:00.000Z',
+  })).rejects.toThrow('already connected')
 })

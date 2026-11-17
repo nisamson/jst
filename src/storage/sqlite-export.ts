@@ -8,14 +8,15 @@ function rows(database: Database, sql: string) {
 export function validateSnapshot(database: Database, profileId?: string): number {
   const [versionRow] = rows(database, 'PRAGMA user_version')
   const version = versionRow?.user_version
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 6) {
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 7) {
     throw new Error('The profile database version cannot be safely exported or restored.')
   }
   const tables: Record<string, string[]> = {
     profile_metadata: ['id', 'profile_id', 'label', 'real_name', 'created_at'],
   }
   if (version >= 2) tables.claims = ['id', 'identifier', 'created_at', 'claim_start_date', ...(version >= 5 ? ['overview'] : [])]
-  if (version >= 3) tables.simulated_sync_setup = ['id', 'provider_id', 'account_label', 'connected_at']
+  if (version >= 7) tables.storage_provider_connection = ['id', 'provider_id', 'account_label', 'location_id', 'connected_at']
+  else if (version >= 3) tables.simulated_sync_setup = ['id', 'provider_id', 'account_label', 'connected_at']
   if (version >= 4) tables.activities = ['id', 'claim_id', 'activity_date', 'kind', 'created_at', 'updated_at',
     'contact_method', 'contact_type', ...activityTextFields]
   if (version >= 6) {
@@ -59,7 +60,8 @@ export function createProfileSnapshot(sqlite: Sqlite3Static, source: Database, p
     }
     const version = validateSnapshot(copy, profileId)
     copy.exec('PRAGMA secure_delete = ON')
-    if (version >= 3) copy.exec('DELETE FROM simulated_sync_setup')
+    if (version >= 7) copy.exec('DELETE FROM storage_provider_connection')
+    else if (version >= 3) copy.exec('DELETE FROM simulated_sync_setup')
     copy.exec('VACUUM')
     const integrity = rows(copy, 'PRAGMA integrity_check')
     if (integrity.length !== 1 || integrity[0].integrity_check !== 'ok' || rows(copy, 'PRAGMA foreign_key_check').length) {

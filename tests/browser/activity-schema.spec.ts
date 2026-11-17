@@ -20,16 +20,20 @@ for (const version of [1, 2, 3]) {
         await session.execute('DROP TABLE activity_files')
         await session.execute('DROP TABLE activity_links')
         await session.execute('DROP TABLE activities')
+        await session.execute('DROP TABLE storage_provider_connection')
         if (legacyVersion >= 2) {
           await session.execute('ALTER TABLE claims DROP COLUMN overview')
           await session.execute("INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES ('keep-claim', 'My claim', '2025-01-01T00:00:00.000Z', '2024-12-01')")
         } else {
           await session.execute('DROP TABLE claims')
         }
-        if (legacyVersion === 3) {
-          await session.saveSimulatedSyncState('Saved simulation', '2025-01-01T00:00:00.000Z')
-        } else {
-          await session.execute('DROP TABLE simulated_sync_setup')
+        if (legacyVersion >= 3) {
+          await session.execute(`CREATE TABLE simulated_sync_setup (
+            id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+            account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
+          if (legacyVersion === 3) {
+            await session.execute("INSERT INTO simulated_sync_setup VALUES (1, 'dummy', 'Saved simulation', '2025-01-01T00:00:00.000Z')")
+          }
         }
         await session.execute(`PRAGMA user_version = ${legacyVersion}`)
         await session.execute('CREATE INDEX activities_claim_date ON profile_metadata(label)')
@@ -70,7 +74,7 @@ for (const version of [1, 2, 3]) {
           version: await migrated.execute('PRAGMA user_version'),
           foreignKeys: await migrated.execute('PRAGMA foreign_keys'),
           claims: await migrated.execute('SELECT * FROM claims'),
-          sync: await migrated.execute('SELECT account_label FROM simulated_sync_setup'),
+          sync: await migrated.execute('SELECT account_label FROM storage_provider_connection'),
           activities: await migrated.execute('SELECT * FROM activities'),
           index: await migrated.execute("SELECT name FROM sqlite_schema WHERE type = 'index' AND name = 'activities_claim_date'"),
         }
@@ -81,6 +85,7 @@ for (const version of [1, 2, 3]) {
 
     expect(result.afterRollback.version).toEqual([{ user_version: version }])
     expect(result.afterRollback.tables).not.toContainEqual({ name: 'activities' })
+    expect(result.afterRollback.tables).not.toContainEqual({ name: 'storage_provider_connection' })
     if (version === 1) expect(result.afterRollback.tables).not.toContainEqual({ name: 'claims' })
     if (version < 3) expect(result.afterRollback.tables).not.toContainEqual({ name: 'simulated_sync_setup' })
     expect(result.afterRollback.profile).toEqual([{
@@ -90,7 +95,7 @@ for (const version of [1, 2, 3]) {
       created_at: result.profile.createdAt,
     }])
     expect(result.metadata).toEqual(result.profile)
-    expect(result.version).toEqual([{ user_version: 6 }])
+    expect(result.version).toEqual([{ user_version: 7 }])
     expect(result.foreignKeys).toEqual([{ foreign_keys: 1 }])
     expect(result.activities).toEqual([])
     expect(result.index).toEqual([{ name: 'activities_claim_date' }])
@@ -111,6 +116,10 @@ test('reads an unprotected version-three profile without migrating or allowing w
     await session.execute('DROP TABLE activity_files')
     await session.execute('DROP TABLE activity_links')
     await session.execute('DROP TABLE activities')
+    await session.execute('DROP TABLE storage_provider_connection')
+    await session.execute(`CREATE TABLE simulated_sync_setup (
+      id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+      account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
     await session.execute('ALTER TABLE claims DROP COLUMN overview')
     await session.execute('PRAGMA user_version = 3')
     await session.dispose()
@@ -145,6 +154,10 @@ test('reads version-four claims without migration and preserves their records wh
     try {
       await session.execute('DROP TABLE activity_files')
       await session.execute('DROP TABLE activity_links')
+      await session.execute('DROP TABLE storage_provider_connection')
+      await session.execute(`CREATE TABLE simulated_sync_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+        account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
       await session.execute('ALTER TABLE claims DROP COLUMN overview')
       await session.execute("INSERT INTO claims (id, identifier, created_at, claim_start_date) VALUES ('keep', 'Keep claim', '2026-01-01T00:00:00.000Z', '2025-12-01')")
       await session.execute(`
@@ -193,10 +206,44 @@ test('reads version-four claims without migration and preserves their records wh
     id: 'keep', identifier: 'Keep claim', created_at: '2026-01-01T00:00:00.000Z', claim_start_date: '2025-12-01', overview: null,
   }])
   expect(result.activities).toEqual([{ id: 'activity', claim_id: 'keep', activity_description: 'Keep activity' }])
-  expect(result.version).toEqual([{ user_version: 6 }])
+  expect(result.version).toEqual([{ user_version: 7 }])
   expect(result.profile.label).toBe('Version four overview migration')
   await page.goto(`/claims?profile=${result.profileId}&claim=keep`)
   await expect(page.getByRole('region', { name: 'Keep claim overview', exact: true })).toContainText('No overview provided.')
+})
+
+test('migrates a v6 simulated connection into the provider-neutral slot', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const path = '/src/storage/profiles.ts'
+    const storage: typeof import('../../src/storage/profiles') = await import(path)
+    const profile = await storage.createProfile({ label: 'Provider connection migration' })
+    const session = await storage.openProfile(profile.id)
+    try {
+      await session.execute('DROP TABLE storage_provider_connection')
+      await session.execute(`CREATE TABLE simulated_sync_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1), provider_id TEXT NOT NULL CHECK (provider_id = 'dummy'),
+        account_label TEXT NOT NULL, connected_at TEXT NOT NULL)`)
+      await session.execute("INSERT INTO simulated_sync_setup VALUES (1, 'dummy', 'Saved simulated account', '2026-03-01T00:00:00.000Z')")
+      await session.execute('PRAGMA user_version = 6')
+    } finally { await session.dispose() }
+
+    const migrated = await storage.openProfile(profile.id)
+    try {
+      return {
+        connection: await migrated.getStorageProviderConnection(),
+        legacyTable: await migrated.execute("SELECT name FROM sqlite_schema WHERE name = 'simulated_sync_setup'"),
+        version: await migrated.execute('PRAGMA user_version'),
+      }
+    } finally { await migrated.dispose() }
+  })
+
+  expect(result.connection).toEqual({
+    providerId: 'dummy',
+    accountLabel: 'Saved simulated account',
+    connectedAt: '2026-03-01T00:00:00.000Z',
+  })
+  expect(result.legacyTable).toEqual([])
+  expect(result.version).toEqual([{ user_version: 7 }])
 })
 
 test('new schema enforces activity ownership, enums, conditional fields, and nonblank required text', async ({ page }) => {
@@ -253,6 +300,6 @@ test('new schema enforces activity ownership, enums, conditional fields, and non
     }
   })
   expect(result.accepted).toEqual([0, 1, 2])
-  expect(result.version).toEqual([{ user_version: 6 }])
+  expect(result.version).toEqual([{ user_version: 7 }])
   expect(result.foreignKeys).toEqual([{ foreign_keys: 1 }])
 })

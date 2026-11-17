@@ -114,7 +114,7 @@ test('failed setup can continue locally without changing existing profile record
       )
       await session.execute(`
         CREATE TRIGGER reject_onboarding_setup
-        BEFORE INSERT ON simulated_sync_setup
+        BEFORE INSERT ON storage_provider_connection
         BEGIN
           SELECT RAISE(FAIL, 'Simulated setup persistence failure');
         END

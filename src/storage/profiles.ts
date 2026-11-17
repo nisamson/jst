@@ -4,8 +4,11 @@ import { getPersistenceStatus } from './environment'
 import type { Persistence } from './environment'
 import { createActivitySchema } from './activity-schema'
 import { createEvidenceSchema } from './evidence-schema'
+import { createProviderConnectionSchema } from './provider-connection-schema'
+import { validateStorageProviderConnection } from '../sync/storage-provider'
+import type { StorageProviderConnection } from '../sync/storage-provider'
 
-const PROFILE_DATABASE_VERSION = 6
+const PROFILE_DATABASE_VERSION = 7
 const MINIMUM_PROFILE_DATABASE_VERSION = 1
 const PROFILE_FILENAME = /^profile-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.sqlite3$/
 const CREATE_CLAIMS_TABLE = `
@@ -46,6 +49,9 @@ export interface ProfileSession {
     syncConnected: boolean
   }
   execute: StorageSession['execute']
+  getStorageProviderConnection: () => Promise<StorageProviderConnection | undefined>
+  connectStorageProvider: (connection: StorageProviderConnection) => Promise<StorageProviderConnection>
+  disconnectStorageProvider: (providerId?: string) => Promise<void>
   saveSimulatedSyncState: (accountLabel: string, connectedAt: string) => Promise<void>
   dispose: StorageSession['dispose']
 }
@@ -141,7 +147,7 @@ async function readProfile(storage: StorageSession, id: string): Promise<Profile
 async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   const [versionRow] = await storage.execute('PRAGMA user_version')
   if (versionRow?.user_version === PROFILE_DATABASE_VERSION) return
-  if (typeof versionRow?.user_version !== 'number' || versionRow.user_version < 1 || versionRow.user_version > 5) {
+  if (typeof versionRow?.user_version !== 'number' || versionRow.user_version < 1 || versionRow.user_version > 7) {
     throw new Error('The local profile database cannot be migrated from its current version.')
   }
 
@@ -164,6 +170,11 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
         await storage.execute(ADD_CLAIM_OVERVIEW)
       } else if (currentVersion === 5) {
         await createEvidenceSchema(storage.execute)
+      } else if (currentVersion === 6) {
+        await createProviderConnectionSchema(storage.execute)
+        await storage.execute(`INSERT INTO storage_provider_connection (id, provider_id, account_label, connected_at)
+          SELECT id, provider_id, account_label, connected_at FROM simulated_sync_setup WHERE id = 1`)
+        await storage.execute('DROP TABLE simulated_sync_setup')
       } else {
         throw new Error('The local profile database cannot be migrated from its current version.')
       }
@@ -188,46 +199,65 @@ async function migrateProfileDatabase(storage: StorageSession): Promise<void> {
   }
 }
 
-async function hasSimulatedSyncAccess(storage: StorageSession): Promise<boolean> {
+async function readStorageProviderConnection(storage: StorageSession): Promise<StorageProviderConnection | undefined> {
+  const [version] = await storage.execute('PRAGMA user_version')
+  if (typeof version?.user_version !== 'number' || version.user_version < 3) return undefined
+  const table = version.user_version >= 7 ? 'storage_provider_connection' : 'simulated_sync_setup'
   const [row] = await storage.execute(
-    'SELECT provider_id, account_label, connected_at FROM simulated_sync_setup WHERE id = 1',
+    `SELECT provider_id, account_label, ${version.user_version >= 7 ? 'location_id, ' : ''}connected_at FROM ${table} WHERE id = 1`,
   )
-  if (!row) return false
-  if (
-    row.provider_id !== 'dummy'
-    || typeof row.account_label !== 'string'
+  if (!row) return undefined
+  if (typeof row.provider_id !== 'string' || typeof row.account_label !== 'string'
     || typeof row.connected_at !== 'string'
-  ) {
-    throw new Error('The saved sync setup state is invalid.')
+    || (version.user_version >= 7 && row.location_id !== null && typeof row.location_id !== 'string')) {
+    throw new Error('The saved storage provider connection is invalid.')
   }
-  return true
+  const connection: StorageProviderConnection = {
+    providerId: row.provider_id,
+    accountLabel: row.account_label,
+    ...(typeof row.location_id === 'string' ? { locationId: row.location_id } : {}),
+    connectedAt: row.connected_at,
+  }
+  validateStorageProviderConnection(connection)
+  if (version.user_version < 7 && connection.providerId !== 'dummy') throw new Error('The saved simulated connection is invalid.')
+  return connection
 }
 
-async function saveSimulatedSyncState(
+async function saveStorageProviderConnection(
   storage: StorageSession,
   readOnly: boolean,
-  accountLabel: string,
-  connectedAt: string,
-): Promise<void> {
-  if (!accountLabel.trim() || !connectedAt.trim()) {
-    throw new Error('The sync setup state is invalid.')
+  connection: StorageProviderConnection,
+): Promise<StorageProviderConnection> {
+  validateStorageProviderConnection(connection)
+  const normalizedConnection: StorageProviderConnection = {
+    providerId: connection.providerId,
+    accountLabel: connection.accountLabel.trim(),
+    ...(connection.locationId === undefined ? {} : { locationId: connection.locationId.trim() }),
+    connectedAt: connection.connectedAt,
   }
   if (readOnly) await storage.execute('PRAGMA query_only = OFF')
 
   let transactionOpen = false
   let failure: unknown
+  let saved = normalizedConnection
   try {
+    await migrateProfileDatabase(storage)
     await storage.execute('BEGIN IMMEDIATE')
     transactionOpen = true
-    await storage.execute(
-      `INSERT INTO simulated_sync_setup (id, provider_id, account_label, connected_at)
-       VALUES (1, 'dummy', ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         provider_id = excluded.provider_id,
-         account_label = excluded.account_label,
-         connected_at = excluded.connected_at`,
-      [accountLabel.trim(), connectedAt],
-    )
+    const existing = await readStorageProviderConnection(storage)
+    if (existing) {
+      if (existing.providerId !== normalizedConnection.providerId || existing.accountLabel !== normalizedConnection.accountLabel
+        || existing.locationId !== normalizedConnection.locationId) {
+        throw new Error('This profile is already connected to another provider, account, or location. Disconnect it explicitly before switching.')
+      }
+      saved = existing
+    } else {
+      await storage.execute(
+        `INSERT INTO storage_provider_connection (id, provider_id, account_label, location_id, connected_at)
+         VALUES (1, ?, ?, ?, ?)`,
+        [normalizedConnection.providerId, normalizedConnection.accountLabel, normalizedConnection.locationId ?? null, normalizedConnection.connectedAt],
+      )
+    }
     await storage.execute('COMMIT')
     transactionOpen = false
   } catch (error) {
@@ -254,6 +284,46 @@ async function saveSimulatedSyncState(
           { cause: restoreError },
         )
         : restoreError
+    }
+  }
+  if (failure) throw failure
+  return saved
+}
+
+async function removeStorageProviderConnection(storage: StorageSession, readOnly: boolean, providerId?: string): Promise<void> {
+  const existing = await readStorageProviderConnection(storage)
+  if (!existing) return
+  if (providerId && existing.providerId !== providerId) {
+    throw new Error('The profile connection belongs to another provider. It was not disconnected.')
+  }
+  if (readOnly) await storage.execute('PRAGMA query_only = OFF')
+  let failure: unknown
+  let transactionOpen = false
+  try {
+    await migrateProfileDatabase(storage)
+    await storage.execute('BEGIN IMMEDIATE')
+    transactionOpen = true
+    const current = await readStorageProviderConnection(storage)
+    if (!current) {
+      await storage.execute('COMMIT')
+      transactionOpen = false
+    } else {
+      if (providerId && current.providerId !== providerId) throw new Error('The profile connection changed. Reopen the profile and retry.')
+      await storage.execute('DELETE FROM storage_provider_connection WHERE id = 1')
+      await storage.execute('COMMIT')
+      transactionOpen = false
+    }
+  } catch (error) {
+    failure = error
+    if (transactionOpen) {
+      try { await storage.execute('ROLLBACK') } catch (rollbackError) {
+        failure = new Error(`Disconnect failed: ${errorMessage(error)} Rollback also failed: ${errorMessage(rollbackError)}`, { cause: rollbackError })
+      }
+    }
+  }
+  if (readOnly) {
+    try { await storage.execute('PRAGMA query_only = ON') } catch (error) {
+      failure = new Error(`Connection removal failed and read-only protection could not be restored: ${errorMessage(error)}`, { cause: error })
     }
   }
   if (failure) throw failure
@@ -321,10 +391,10 @@ export function createProfileRepository(
           )
         `)
         await storage.execute(CREATE_CLAIMS_TABLE)
-        await storage.execute(CREATE_SIMULATED_SYNC_TABLE)
         await createActivitySchema(storage.execute)
         await storage.execute(ADD_CLAIM_OVERVIEW)
         await createEvidenceSchema(storage.execute)
+        await createProviderConnectionSchema(storage.execute)
         if (backup) {
           const restored = await storage.importProfile(backup)
           if (typeof restored.label !== 'string' || (restored.real_name !== null && typeof restored.real_name !== 'string')) {
@@ -401,7 +471,7 @@ export function createProfileRepository(
           try {
             const [version] = await storage.execute('PRAGMA user_version')
             const configured = typeof version?.user_version === 'number' && version.user_version >= 3
-              ? await hasSimulatedSyncAccess(storage)
+              ? Boolean(await readStorageProviderConnection(storage))
               : false
             syncStatuses[id] = { state: configured ? 'configured' : 'unconfigured' }
           } catch (error) {
@@ -432,7 +502,7 @@ export function createProfileRepository(
       const profile = await readProfile(storage, id)
       const [versionRow] = await storage.execute('PRAGMA user_version')
       const syncConnected = typeof versionRow?.user_version === 'number' && versionRow.user_version >= 3
-        ? await hasSimulatedSyncAccess(storage)
+        ? Boolean(await readStorageProviderConnection(storage))
         : false
       const persistence = await dependencies.getPersistenceStatus()
       const readOnly = persistence !== 'granted' && !syncConnected
@@ -440,16 +510,41 @@ export function createProfileRepository(
       if (!readOnly) await migrateProfileDatabase(storage)
       else await storage.execute('PRAGMA query_only = ON')
 
-      let simulatedSyncWriteInProgress = false
+      let providerConnectionWriteInProgress = false
       let sessionUnavailable = false
       const execute: StorageSession['execute'] = (sql, bind) => {
         if (sessionUnavailable) {
           return Promise.reject(new Error('The profile storage session is unavailable. Reopen the profile and retry.'))
         }
-        if (simulatedSyncWriteInProgress) {
-          return Promise.reject(new Error('Sync setup is being saved. Retry the profile operation shortly.'))
+        if (providerConnectionWriteInProgress) {
+          return Promise.reject(new Error('The provider connection is being updated. Retry the profile operation shortly.'))
         }
         return storage.execute(sql, bind)
+      }
+      const getStorageProviderConnection = async () => {
+        if (sessionUnavailable) throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
+        if (providerConnectionWriteInProgress) throw new Error('The provider connection is being updated. Retry shortly.')
+        return readStorageProviderConnection(storage)
+      }
+      const connectStorageProvider = async (connection: StorageProviderConnection) => {
+        if (sessionUnavailable) throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
+        if (providerConnectionWriteInProgress) throw new Error('The provider connection is already being updated. Retry shortly.')
+        providerConnectionWriteInProgress = true
+        try {
+          return await saveStorageProviderConnection(storage, readOnly, connection)
+        } finally {
+          providerConnectionWriteInProgress = false
+        }
+      }
+      const disconnectStorageProvider = async (providerId?: string) => {
+        if (sessionUnavailable) throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
+        if (providerConnectionWriteInProgress) throw new Error('The provider connection is already being updated. Retry shortly.')
+        providerConnectionWriteInProgress = true
+        try {
+          await removeStorageProviderConnection(storage, readOnly, providerId)
+        } finally {
+          providerConnectionWriteInProgress = false
+        }
       }
 
       return {
@@ -460,22 +555,14 @@ export function createProfileRepository(
           syncConnected,
         },
         execute,
+        getStorageProviderConnection,
+        connectStorageProvider,
+        disconnectStorageProvider,
         async saveSimulatedSyncState(accountLabel, connectedAt) {
           if (sessionUnavailable) {
             throw new Error('The profile storage session is unavailable. Reopen the profile and retry.')
           }
-          if (simulatedSyncWriteInProgress) {
-            throw new Error('Sync setup is already being saved. Retry the operation shortly.')
-          }
-          simulatedSyncWriteInProgress = true
-          try {
-            await saveSimulatedSyncState(storage, readOnly, accountLabel, connectedAt)
-          } catch (error) {
-            sessionUnavailable = true
-            throw error
-          } finally {
-            simulatedSyncWriteInProgress = false
-          }
+          await connectStorageProvider({ providerId: 'dummy', accountLabel, connectedAt })
         },
         dispose: storage.dispose,
       }

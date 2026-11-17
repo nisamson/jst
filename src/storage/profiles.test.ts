@@ -9,8 +9,9 @@ interface FakeDatabase {
   hasTable: boolean
   hasClaimsTable: boolean
   hasSimulatedSyncTable: boolean
+  hasProviderConnectionTable?: boolean
   queryOnly: boolean
-  syncState?: { provider_id: string; account_label: string; connected_at: string }
+  syncState?: { provider_id: string; account_label: string; connected_at: string; location_id?: string | null }
   profile?: {
     profile_id: string
     label: string
@@ -93,6 +94,10 @@ beforeEach(() => {
         activeDatabase.version = 6
         return []
       }
+      if (statement === 'PRAGMA user_version = 7') {
+        activeDatabase.version = 7
+        return []
+      }
       if (statement.startsWith('CREATE TABLE activity_') || statement.startsWith('CREATE INDEX activity_')) return []
       if (statement === 'PRAGMA user_version = 5') {
         activeDatabase.version = 5
@@ -131,6 +136,12 @@ beforeEach(() => {
       if (statement.startsWith('SELECT provider_id, account_label, connected_at FROM simulated_sync_setup')) {
         return activeDatabase.syncState ? [row(activeDatabase.syncState)] : []
       }
+      if (statement.startsWith('SELECT provider_id, account_label, location_id, connected_at FROM storage_provider_connection')) {
+        return activeDatabase.syncState ? [row({
+          ...activeDatabase.syncState,
+          location_id: activeDatabase.syncState.location_id ?? null,
+        })] : []
+      }
       if (statement.startsWith('INSERT INTO simulated_sync_setup')) {
         const [accountLabel, connectedAt] = Array.isArray(bind) ? bind : []
         activeDatabase.syncState = {
@@ -138,6 +149,33 @@ beforeEach(() => {
           account_label: String(accountLabel),
           connected_at: String(connectedAt),
         }
+        return []
+      }
+      if (statement.startsWith('INSERT INTO storage_provider_connection (id, provider_id, account_label, location_id, connected_at) VALUES')) {
+        const [providerId, accountLabel, locationId, connectedAt] = Array.isArray(bind) ? bind : []
+        if (activeDatabase.syncState) throw new Error('unique connection slot')
+        activeDatabase.syncState = {
+          provider_id: String(providerId),
+          account_label: String(accountLabel),
+          location_id: typeof locationId === 'string' ? locationId : null,
+          connected_at: String(connectedAt),
+        }
+        return []
+      }
+      if (statement === 'DELETE FROM storage_provider_connection WHERE id = 1') {
+        activeDatabase.syncState = undefined
+        return []
+      }
+      if (statement.startsWith('CREATE TABLE storage_provider_connection')) {
+        activeDatabase.hasProviderConnectionTable = true
+        return []
+      }
+      if (statement.startsWith('INSERT INTO storage_provider_connection (id, provider_id, account_label, connected_at) SELECT')) {
+        if (activeDatabase.syncState) activeDatabase.syncState.location_id = null
+        return []
+      }
+      if (statement === 'DROP TABLE simulated_sync_setup') {
+        activeDatabase.hasSimulatedSyncTable = false
         return []
       }
       if (statement.startsWith('INSERT INTO claims')) return []
@@ -201,9 +239,9 @@ it('creates, lists, and opens separate profiles with normalized metadata', async
 
   const opened = await repository.openProfile(first.id)
   expect(opened.profile).toEqual(first)
-  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(6)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.version).toBe(7)
   expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasClaimsTable).toBe(true)
-  expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasSimulatedSyncTable).toBe(true)
+  expect(databases.get(`/profile-${first.id}.sqlite3`)?.hasProviderConnectionTable).toBe(true)
   await opened.dispose()
   expect(initializeStorage).toHaveBeenCalledTimes(4)
 })
@@ -294,12 +332,12 @@ it('keeps profiles visible when their sync setup metadata is invalid', async () 
   const profile = await repository.createProfile({ label: 'Keep profile' })
   const database = databases.get(`/profile-${profile.id}.sqlite3`)
   if (!database) throw new Error('Test profile is missing.')
-  database.syncState = { provider_id: 'invalid', account_label: 'Account', connected_at: '2026-01-01' }
+  database.syncState = { provider_id: 'Bad id!', account_label: 'Account', connected_at: '2026-01-01' }
   const listing = await repository.listProfiles()
   expect(listing.profiles).toEqual([profile])
   expect(listing.errors).toEqual([])
   expect(listing.syncStatuses[profile.id]).toEqual({
-    state: 'error', message: 'The saved sync setup state is invalid.',
+    state: 'error', message: 'The storage provider connection metadata is invalid.',
   })
 })
 
@@ -347,10 +385,11 @@ it('surfaces missing and unsupported profiles instead of creating or resetting t
   await expect(repository.openProfile('invalid-id')).rejects.toThrow(/invalid/)
 
   const versionedDatabase: FakeDatabase = {
-    version: 7,
+    version: 8,
     hasTable: true,
     hasClaimsTable: false,
     hasSimulatedSyncTable: false,
+    hasProviderConnectionTable: false,
     queryOnly: false,
     profile: {
       profile_id: profileIds[0],
@@ -364,7 +403,7 @@ it('surfaces missing and unsupported profiles instead of creating or resetting t
   expect(listing.profiles).toEqual([])
   expect(listing.errors).toHaveLength(1)
   expect(listing.errors[0].message).toMatch(/unsupported or incomplete/i)
-  expect(versionedDatabase.version).toBe(7)
+  expect(versionedDatabase.version).toBe(8)
   expect(versionedDatabase.profile?.label).toBe('Preserve this profile')
 })
 
@@ -393,9 +432,9 @@ it('migrates a version-one profile without changing its metadata', async () => {
     realName: 'Alex Example',
     createdAt: '2026-01-01T00:00:00.000Z',
   })
-  expect(legacy.version).toBe(6)
+  expect(legacy.version).toBe(7)
   expect(legacy.hasClaimsTable).toBe(true)
-  expect(legacy.hasSimulatedSyncTable).toBe(true)
+  expect(legacy.hasProviderConnectionTable).toBe(true)
   await opened.dispose()
 })
 
@@ -419,8 +458,8 @@ it('migrates a version-two profile by adding simulated setup state', async () =>
   const opened = await repository.openProfile(profileIds[0])
 
   expect(opened.profile.label).toBe('Existing profile')
-  expect(existing.version).toBe(6)
-  expect(existing.hasSimulatedSyncTable).toBe(true)
+  expect(existing.version).toBe(7)
+  expect(existing.hasProviderConnectionTable).toBe(true)
   await opened.dispose()
 })
 
@@ -463,13 +502,78 @@ it('allows writes when a simulated connection is saved for the profile', async (
   await opened.dispose()
 })
 
+it('enforces one provider/account/location per profile and allows explicit disconnect before switching', async () => {
+  const { repository } = createHarness()
+  const firstProfile = await repository.createProfile({ label: 'First profile' })
+  const secondProfile = await repository.createProfile({ label: 'Second profile' })
+  const first = await repository.openProfile(firstProfile.id)
+  const original = {
+    providerId: 'drive.example',
+    accountLabel: ' Account one ',
+    locationId: ' folder-a ',
+    connectedAt: '2026-01-01T00:00:00.000Z',
+  }
+  const normalized = { ...original, accountLabel: 'Account one', locationId: 'folder-a' }
+  expect(await first.connectStorageProvider(original)).toEqual(normalized)
+  expect(await first.connectStorageProvider({ ...original, connectedAt: '2026-02-01T00:00:00.000Z' })).toEqual(normalized)
+  await expect(first.connectStorageProvider({ ...original, accountLabel: 'Account two' })).rejects.toThrow(/Disconnect it explicitly/)
+  await expect(first.connectStorageProvider({ ...original, locationId: 'folder-b' })).rejects.toThrow(/Disconnect it explicitly/)
+  await expect(first.disconnectStorageProvider('other-provider')).rejects.toThrow(/belongs to another provider/)
+  expect(await first.getStorageProviderConnection()).toEqual(normalized)
+  await first.disconnectStorageProvider(normalized.providerId)
+  const switched = { ...normalized, providerId: 'another-provider', connectedAt: '2026-03-01T00:00:00.000Z' }
+  expect(await first.connectStorageProvider(switched)).toEqual(switched)
+  await first.dispose()
+  const second = await repository.openProfile(secondProfile.id)
+  expect(await second.getStorageProviderConnection()).toBeUndefined()
+  await second.dispose()
+})
+
+it('rejects concurrent connection attempts on the same profile session', async () => {
+  const { repository } = createHarness()
+  const profile = await repository.createProfile({ label: 'Concurrent profile' })
+  const session = await repository.openProfile(profile.id)
+  const connection = { providerId: 'provider-one', accountLabel: 'Account', connectedAt: '2026-01-01T00:00:00.000Z' }
+  const results = await Promise.allSettled([
+    session.connectStorageProvider(connection),
+    session.connectStorageProvider({ ...connection, providerId: 'provider-two' }),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+  expect(await session.getStorageProviderConnection()).toMatchObject({ providerId: 'provider-one' })
+  await session.dispose()
+})
+
+it('migrates the existing simulated connection into the provider-neutral slot', async () => {
+  const { repository } = createHarness()
+  const profile = await repository.createProfile({ label: 'Migrating profile' })
+  const database = databases.get(`/profile-${profile.id}.sqlite3`)!
+  database.version = 6
+  database.hasProviderConnectionTable = false
+  database.hasSimulatedSyncTable = true
+  database.syncState = {
+    provider_id: 'dummy',
+    account_label: 'Simulated account',
+    connected_at: '2026-01-01T00:00:00.000Z',
+  }
+  const session = await repository.openProfile(profile.id)
+  expect(database.version).toBe(7)
+  expect(database.hasSimulatedSyncTable).toBe(false)
+  expect(await session.getStorageProviderConnection()).toEqual({
+    providerId: 'dummy',
+    accountLabel: 'Simulated account',
+    connectedAt: '2026-01-01T00:00:00.000Z',
+  })
+  await session.dispose()
+})
+
 it('blocks profile operations while read-only setup temporarily enables its metadata write', async () => {
   const { repository } = createHarness(profileIds, 'denied')
   const profile = await repository.createProfile({ label: 'Setup profile' })
   const opened = await repository.openProfile(profile.id)
 
   const update = opened.saveSimulatedSyncState('Simulated account', '2026-01-01T00:00:00.000Z')
-  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/sync setup is being saved/i)
+  await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/provider connection is being updated/i)
   await update
   await expect(opened.execute('INSERT INTO claims VALUES (?, ?, ?, ?)')).rejects.toThrow(/readonly/i)
   await opened.dispose()
